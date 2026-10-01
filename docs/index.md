@@ -12,6 +12,7 @@ This is the canonical information architecture for product documentation. Keep t
 ## 2. Cloud Connections
 
 - Connection wizard and connection test
+- Minimum provider permissions — see [cloud account permission guide](cloud-policies.md)
 - Amazon Web Services
 - Alibaba Cloud — see [Alibaba Cloud guide](alibaba.md) and [RAM policy](alibaba-policy.json)
 - Microsoft Azure — see [Azure and Google Cloud guide](azure-gcp.md)
@@ -37,6 +38,7 @@ This is the canonical information architecture for product documentation. Keep t
 ## 5. Operations
 
 - Resource lifecycle actions
+- Resource consumption and billing-readiness reports
 - Snapshot-first pages, asynchronous live-refresh jobs, database snapshots, and retention
 - Local, Docker, and Kubernetes operation
 - Legacy migration — see [migration guide](migration.md)

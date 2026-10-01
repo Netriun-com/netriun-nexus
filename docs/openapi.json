@@ -256,6 +256,27 @@
         }
       }
     },
+    "/reports/overview": {
+      "get": {
+        "summary": "Resource consumption and billing-readiness report",
+        "description": "Aggregates the latest healthy compute, EDS and OSS snapshots for accessible accounts. Exact spend remains unavailable until provider billing APIs and separate cost-read permissions are configured.",
+        "parameters": [
+          {
+            "name": "account_ids",
+            "in": "query",
+            "description": "Comma-separated accessible account IDs from one cloud provider",
+            "schema": { "type": "string", "pattern": "^[1-9][0-9]*(,[1-9][0-9]*)*$" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Latest snapshot report" },
+          "400": { "description": "Invalid account selection" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Cloud account access required" },
+          "503": { "description": "Dependency unavailable" }
+        }
+      }
+    },
     "/accounts": {
       "get": {
         "summary": "List accounts",
