@@ -19,12 +19,15 @@ const (
 	CapabilityEDSView       Capability = "eds.view"
 	CapabilityEDSOperate    Capability = "eds.operate"
 	CapabilityEDSManage     Capability = "eds.manage"
+	CapabilityBillingView   Capability = "billing.view"
+	CapabilityBillingSync   Capability = "billing.sync"
 )
 
 var supportedCapabilities = []Capability{
 	CapabilityAccountView, CapabilityAccountManage,
 	CapabilityComputeView, CapabilityComputeAction,
 	CapabilityEDSView, CapabilityEDSOperate, CapabilityEDSManage,
+	CapabilityBillingView, CapabilityBillingSync,
 }
 
 type PolicyEngine struct {
@@ -47,7 +50,7 @@ WHERE a.workspace_id=$1 AND (
     (aa.principal_type='user' AND aa.user_id=$3)
     OR (aa.principal_type='team' AND ug.user_id IS NOT NULL AND
      CASE ug.role WHEN 'manager' THEN 3 WHEN 'operator' THEN 2 ELSE 1 END >=
-     CASE $4 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
+     CASE $4 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'billing.sync' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
    )
  )
  OR (
@@ -56,9 +59,10 @@ WHERE a.workspace_id=$1 AND (
    SELECT 1 FROM effective_user_groups legacy
    JOIN access_groups g ON g.id=legacy.group_id AND g.workspace_id=$1
    WHERE legacy.user_id=$3 AND legacy.group_id=a.group_id AND (
-    ($4 IN ('account.view','compute.view') AND g.view_dashboard)
+    ($4 IN ('account.view','compute.view','billing.view') AND g.view_dashboard)
     OR ($4='compute.operate' AND g.view_dashboard AND legacy.role IN ('operator','manager'))
     OR ($4='account.manage' AND g.manage_cloud_accounts AND legacy.role='manager')
+    OR ($4='billing.sync' AND g.manage_cloud_accounts AND legacy.role='manager')
    )
   )
  )
@@ -128,7 +132,7 @@ SELECT EXISTS(
      (aa.principal_type='user' AND aa.user_id=$4)
      OR (aa.principal_type='team' AND ug.user_id IS NOT NULL AND
       CASE ug.role WHEN 'manager' THEN 3 WHEN 'operator' THEN 2 ELSE 1 END >=
-      CASE $5 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
+      CASE $5 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'billing.sync' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
     )
   )
   OR (
@@ -141,6 +145,8 @@ SELECT EXISTS(
      OR ($5='compute.view' AND g.view_dashboard)
      OR ($5='compute.operate' AND g.view_dashboard AND legacy.role IN ('operator','manager'))
      OR ($5='account.manage' AND g.manage_cloud_accounts AND legacy.role='manager')
+     OR ($5='billing.view' AND g.view_dashboard)
+     OR ($5='billing.sync' AND g.manage_cloud_accounts AND legacy.role='manager')
     )
    )
   )

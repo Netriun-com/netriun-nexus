@@ -517,6 +517,24 @@ func TestIntegration(t *testing.T) {
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/maintenance?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"mode": "INVALID"}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/commands?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"command": "Get-Date", "command_type": "RunPowerShellScript", "timeout": 300, "confirm": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/billing?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"charge_type": "PrePaid", "period": 4, "period_unit": "Month", "confirm_cost": true}, 400)
+	billingCycle := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01")
+	if _, err = a.DB.Exec(ctx, `INSERT INTO alibaba_billing_items(workspace_id,account_id,billing_cycle,service_key,product_code,product_name,instance_id,instance_name,region,subscription_type,currency,pretax_amount) VALUES ($1,$2,$3,'ecs','ecs','Elastic Compute Service','i-billing','finance-api','cn-hangzhou','PayAsYouGo','USD',12.5),($1,$2,$3,'eds','ecd','WUYING Workspace','ecd-billing','finance-desktop','cn-hangzhou','Subscription','USD',7.25)`, workspaceID, alibabaAccount, billingCycle); err != nil {
+		t.Fatal(err)
+	}
+	billingQuery := fmt.Sprintf("?account_ids=%d&billing_cycle=%s&services=ecs,eds&resource_query=finance", alibabaAccount, billingCycle)
+	billingReport := request("GET", "/api/v1/reports/alibaba/billing"+billingQuery, adminToken, nil, 200)
+	if !strings.Contains(billingReport.Body.String(), `"service":"ecs","currency":"USD","amount":12.5`) || !strings.Contains(billingReport.Body.String(), `"row_count":2`) {
+		t.Fatalf("exact Alibaba billing report is invalid: %s", billingReport.Body.String())
+	}
+	xlsxExport := request("GET", "/api/v1/reports/alibaba/billing/export"+billingQuery+"&format=xlsx", adminToken, nil, 200)
+	if xlsxExport.Header().Get("Content-Type") != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || !bytes.HasPrefix(xlsxExport.Body.Bytes(), []byte("PK")) {
+		t.Fatal("Alibaba billing Excel export is invalid")
+	}
+	pdfExport := request("GET", "/api/v1/reports/alibaba/billing/export"+billingQuery+"&format=pdf", adminToken, nil, 200)
+	if pdfExport.Header().Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(pdfExport.Body.Bytes(), []byte("%PDF")) {
+		t.Fatal("Alibaba billing PDF export is invalid")
+	}
+	request("GET", fmt.Sprintf("/api/v1/reports/alibaba/billing?account_ids=%d&billing_cycle=%s", account1, billingCycle), adminToken, nil, 400)
 	request("GET", fmt.Sprintf("/api/v1/instances/%d", i1), viewer, nil, 200)
 	request("GET", fmt.Sprintf("/api/v1/instances/%d", i2), viewer, nil, 403)
 	request("POST", fmt.Sprintf("/api/v1/instances/%d/actions", i1), viewer, map[string]string{"action": "stop"}, 403)
@@ -707,7 +725,7 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "data-tree-toggle") || !strings.Contains(webAsset.Body.String(), "aria-expanded") || !strings.Contains(webAsset.Body.String(), "Interactive wizard") || !strings.Contains(webAsset.Body.String(), "eds-wizard-review") || !strings.Contains(webAsset.Body.String(), "/reports/overview") || !strings.Contains(webAsset.Body.String(), "Billing readiness") || !strings.Contains(webAsset.Body.String(), "copy-cloud-policy") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "data-tree-toggle") || !strings.Contains(webAsset.Body.String(), "aria-expanded") || !strings.Contains(webAsset.Body.String(), "Interactive wizard") || !strings.Contains(webAsset.Body.String(), "eds-wizard-review") || !strings.Contains(webAsset.Body.String(), "/reports/overview") || !strings.Contains(webAsset.Body.String(), "Custom billing report") || !strings.Contains(webAsset.Body.String(), "/reports/alibaba/billing/export") || !strings.Contains(webAsset.Body.String(), "copy-cloud-policy") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	docsAsset := request("GET", "/docs.js", "", nil, 200)
@@ -715,7 +733,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("cloud policy and reporting documentation is missing")
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.25"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.26"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}

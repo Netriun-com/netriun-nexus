@@ -277,6 +277,57 @@
         }
       }
     },
+    "/reports/alibaba/billing": {
+      "get": {
+        "summary": "Build an exact Alibaba monthly billing report",
+        "description": "Reads previously synchronized Alibaba BSS instance-bill rows. Totals use PretaxAmount and remain separated by service and currency.",
+        "parameters": [
+          { "name": "account_ids", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "billing_cycle", "in": "query", "schema": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$" } },
+          { "name": "services", "in": "query", "description": "Comma-separated ecs, eds, or other values", "schema": { "type": "string", "default": "ecs,eds" } },
+          { "name": "resource_query", "in": "query", "description": "Case-insensitive resource name or instance ID substring", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Exact stored bill rows and totals" },
+          "400": { "description": "Invalid account, month, or service selection" },
+          "403": { "description": "billing.view access required" }
+        }
+      }
+    },
+    "/reports/alibaba/billing/sync": {
+      "post": {
+        "summary": "Synchronize exact Alibaba BSS bill rows",
+        "description": "Fetches all DescribeInstanceBill pages and atomically replaces the selected account/month snapshots. Requires bssapi:DescribeInstanceBill in RAM and billing.sync in Nexus.",
+        "parameters": [
+          { "name": "account_ids", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "billing_cycle", "in": "query", "schema": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$" } }
+        ],
+        "responses": {
+          "200": { "description": "Synchronization completed" },
+          "400": { "description": "Invalid scope" },
+          "403": { "description": "billing.sync access required" },
+          "502": { "description": "Alibaba BSS rejected or failed the request" }
+        }
+      }
+    },
+    "/reports/alibaba/billing/export": {
+      "get": {
+        "summary": "Export a filtered Alibaba billing report",
+        "description": "Uses the same account, month, service, and resource filters as the report endpoint.",
+        "parameters": [
+          { "name": "account_ids", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "billing_cycle", "in": "query", "schema": { "type": "string" } },
+          { "name": "services", "in": "query", "schema": { "type": "string" } },
+          { "name": "resource_query", "in": "query", "schema": { "type": "string" } },
+          { "name": "format", "in": "query", "required": true, "schema": { "type": "string", "enum": ["xlsx", "pdf"] } }
+        ],
+        "responses": {
+          "200": { "description": "Excel workbook or PDF document" },
+          "400": { "description": "Invalid export parameters" },
+          "403": { "description": "billing.view access required" }
+        }
+      }
+    },
     "/accounts": {
       "get": {
         "summary": "List accounts",

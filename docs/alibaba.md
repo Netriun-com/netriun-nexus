@@ -12,7 +12,7 @@ Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop
 
 ## Grant the service permissions you enable
 
-1. In RAM, open **Permissions > Policies** and create a custom policy using [alibaba-policy.json](alibaba-policy.json). Remove the EDS, OSS, or security-group mutation statements for services this connection does not use. For read-only ECS security groups, keep `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute` but remove the separate Authorize/Revoke statement. For read-only OSS access, remove the separate `oss:PutBucket` statement.
+1. In RAM, open **Permissions > Policies** and create a custom policy using [alibaba-policy.json](alibaba-policy.json). Remove the EDS, OSS, or security-group mutation statements for services this connection does not use. For read-only ECS security groups, keep `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute` but remove the separate Authorize/Revoke statement. For read-only OSS access, remove the separate `oss:PutBucket` statement. Keep the read-only `bssapi:DescribeInstanceBill` statement when the connection must synchronize exact billing reports.
 2. For production, replace the lifecycle statement's wildcard resource with the exact instance ARNs that Netriun may operate, for example `acs:ecs:cn-hangzhou:1234567890123456:instance/i-example`.
 3. Return to **Identities > Users**, open `netriun-nexus`, select **Add Permissions**, and attach the custom policy.
 4. Do not attach `AdministratorAccess`, `AliyunRAMFullAccess`, or broad product full-access policies to this application user. The EDS API currently documents these operations with `Resource: "*"`, so keep the portal's account and group permissions narrow.
@@ -39,3 +39,18 @@ The WUYING user directory uses partition-level endpoints rather than the selecte
 Use a separate RAM identity or policy for each provider component where practical. Alibaba Cloud Object Storage is named **OSS**, not S3. WUYING uses `ecd` RAM actions, including for the convenience-user API.
 
 Rotate the AccessKey periodically. Netriun Nexus also accepts a static STS security token, but expiring credentials must be replaced before expiration.
+
+## Build exact monthly billing reports
+
+The Reports page can synchronize the exact instance-bill rows returned by
+Alibaba BSS OpenAPI. Select Alibaba Cloud and the required accounts in the
+sidebar, choose a billing month, select ECS, EDS, or both, optionally enter a
+resource name or instance ID filter, and choose **Sync exact bill**. Stored
+rows can then be filtered without another provider request and exported to
+Excel or PDF.
+
+Nexus reports `PretaxAmount`, the payable pre-tax amount returned by Alibaba,
+and keeps each currency separate. The API exposes the latest 18 billing
+months. Alibaba notes that billing data can lag by about 24 hours and instance
+metadata by about 48 hours. The current month remains provisional and is
+normally finalized after 12:00 on the third day of the next month.

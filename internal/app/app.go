@@ -244,11 +244,14 @@ func (a *App) Handler() http.Handler {
 	m.HandleFunc("GET /sso/{provider}/slo", a.samlLogoutCallback)
 	m.HandleFunc("POST /sso/{provider}/slo", a.samlLogoutCallback)
 	routes := map[string]http.HandlerFunc{
-		"GET /api/v1/summary":          a.summary,
-		"GET /api/v1/reports/overview": a.reportsOverview,
-		"GET /api/v1/auth/me":          func(w http.ResponseWriter, r *http.Request) { write(w, 200, current(r)) },
-		"POST /api/v1/auth/logout":     a.logout,
-		"GET /api/v1/instances":        a.instances, "GET /api/v1/instances/{id}": a.instance, "POST /api/v1/instances/{id}/actions": a.action,
+		"GET /api/v1/summary":                        a.summary,
+		"GET /api/v1/reports/overview":               a.reportsOverview,
+		"GET /api/v1/reports/alibaba/billing":        a.alibabaBillingReport,
+		"POST /api/v1/reports/alibaba/billing/sync":  a.syncAlibabaBilling,
+		"GET /api/v1/reports/alibaba/billing/export": a.exportAlibabaBilling,
+		"GET /api/v1/auth/me":                        func(w http.ResponseWriter, r *http.Request) { write(w, 200, current(r)) },
+		"POST /api/v1/auth/logout":                   a.logout,
+		"GET /api/v1/instances":                      a.instances, "GET /api/v1/instances/{id}": a.instance, "POST /api/v1/instances/{id}/actions": a.action,
 		"GET /api/v1/accounts": a.accounts, "POST /api/v1/accounts": a.saveAccount, "PUT /api/v1/accounts/{id}": a.saveAccount, "DELETE /api/v1/accounts/{id}": a.deleteAccount,
 		"POST /api/v1/accounts/test": a.testCloudAccount, "POST /api/v1/accounts/{id}/test": a.testCloudAccount,
 		"GET /api/v1/accounts/{id}/eds/desktops": a.edsDesktops, "POST /api/v1/accounts/{id}/eds/desktops": a.createEDSDesktop,

@@ -83,6 +83,13 @@
         "ecd:ModifyDesktopChargeType"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bssapi:DescribeInstanceBill"
+      ],
+      "Resource": "*"
     }
   ]
 }

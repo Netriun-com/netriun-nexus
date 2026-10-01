@@ -30,6 +30,9 @@ features the connection will not use:
 - Remove `oss:PutBucket` when Nexus must only inventory OSS.
 - Remove EDS lifecycle, user, command and billing statements when Nexus must
   only inventory WUYING resources.
+- Keep `bssapi:DescribeInstanceBill` when users need exact Alibaba monthly
+  billing reports. This is a read-only BSS OpenAPI action and uses
+  `Resource: "*"` because the API does not support resource-level scope.
 
 Do not attach `AdministratorAccess`, `AliyunRAMFullAccess`, or product-wide
 full-access policies. See [Alibaba Cloud connection](alibaba.md) for service and
@@ -60,9 +63,10 @@ Create a JSON key only when workload identity is not available, store it as a
 secret, and rotate it regularly. See [Azure and Google Cloud
 connections](azure-gcp.md) for the complete connection workflow.
 
-## Future billing reports
+## Billing reports
 
-Exact spend is intentionally unavailable until a provider billing connector is
-configured. Cost APIs require separate permissions from resource inventory.
-When those connectors are added, use a distinct read-only billing role instead
-of expanding the infrastructure identity with broad financial access.
+Alibaba billing reports use the provider's exact monthly instance-bill rows.
+The current connector supports ECS, WUYING EDS, combined service reports, and
+resource name or ID filters. It does not estimate missing spend. Other cloud
+providers still require their own future billing connectors and separate
+read-only cost permissions.
