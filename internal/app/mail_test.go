@@ -3,6 +3,7 @@
 package app
 
 import (
+	"encoding/base64"
 	"net/mail"
 	"strings"
 	"testing"
@@ -18,11 +19,40 @@ func TestVerificationMessageRejectsLineBreakInjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(message)
-	if !strings.Contains(text, "Content-Transfer-Encoding: quoted-printable") {
+	if !strings.Contains(text, "Content-Transfer-Encoding: base64") {
 		t.Fatalf("untrusted body content was not MIME encoded safely: %s", text)
 	}
 	if strings.Count(text, "Content-Type: text/plain") != 1 || strings.Count(text, "Content-Type: text/html") != 1 {
 		t.Fatal("verification message must contain exactly one plain and one HTML part")
+	}
+}
+
+func TestWriteMIMEBase64WrapsAndRoundTrips(t *testing.T) {
+	original := []byte(strings.Repeat("verification-content-", 20))
+	var encoded strings.Builder
+	if err := writeMIMEBase64(&encoded, original); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(encoded.String()), "\r\n") {
+		if len(line) > 76 {
+			t.Fatalf("MIME base64 line is %d characters", len(line))
+		}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(encoded.String(), "\r\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != string(original) {
+		t.Fatal("base64 body did not round-trip")
+	}
+}
+
+func TestVerificationMessageRejectsUnsafeURL(t *testing.T) {
+	sender := smtpSender{from: mail.Address{Name: "Netriun Nexus", Address: "sender@example.com"}}
+	for _, candidate := range []string{"javascript:alert(1)", "https://user:secret@example.com/verify", "https://example.com/verify\x00"} {
+		if _, err := sender.verificationMessage(mail.Address{Address: "user@example.com"}, "normal-user", candidate); err == nil {
+			t.Fatalf("unsafe verification URL accepted: %q", candidate)
+		}
 	}
 }
 

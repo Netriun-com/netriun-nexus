@@ -9,8 +9,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"io"
 	"mime/multipart"
-	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -51,8 +51,12 @@ func (s *smtpSender) SendVerification(to, username, verifyURL string) error {
 }
 
 func (s *smtpSender) verificationMessage(recipient mail.Address, username, verifyURL string) ([]byte, error) {
-	if containsHeaderBreak(username) || containsHeaderBreak(verifyURL) {
+	if containsUnsafeMailText(username) || len(username) > 100 {
 		return nil, fmt.Errorf("invalid verification message content")
+	}
+	verificationURI, err := url.Parse(verifyURL)
+	if err != nil || (verificationURI.Scheme != "https" && verificationURI.Scheme != "http") || verificationURI.Host == "" || verificationURI.User != nil || len(verifyURL) > 2048 || containsUnsafeMailText(verifyURL) {
+		return nil, fmt.Errorf("invalid verification URL")
 	}
 	subject := "Verify your Netriun Nexus email"
 	plain := fmt.Sprintf("Hello %s,\n\nVerify your email to activate your Netriun Nexus workspace:\n%s\n\nThis link expires in 24 hours. If you did not create this account, you can ignore this email.\n", username, verifyURL)
@@ -66,22 +70,18 @@ func (s *smtpSender) verificationMessage(recipient mail.Address, username, verif
 	if err := multipartWriter.SetBoundary("nexus-" + base64.RawURLEncoding.EncodeToString(boundaryBytes)); err != nil {
 		return nil, err
 	}
-	for contentType, content := range map[string]string{
-		"text/plain; charset=UTF-8": plain,
-		"text/html; charset=UTF-8":  htmlBody,
+	for _, item := range []struct{ contentType, content string }{
+		{"text/plain; charset=UTF-8", plain},
+		{"text/html; charset=UTF-8", htmlBody},
 	} {
 		part, err := multipartWriter.CreatePart(textproto.MIMEHeader{
-			"Content-Type":              {contentType},
-			"Content-Transfer-Encoding": {"quoted-printable"},
+			"Content-Type":              {item.contentType},
+			"Content-Transfer-Encoding": {"base64"},
 		})
 		if err != nil {
 			return nil, err
 		}
-		quoted := quotedprintable.NewWriter(part)
-		if _, err = quoted.Write([]byte(content)); err != nil {
-			return nil, err
-		}
-		if err = quoted.Close(); err != nil {
+		if err = writeMIMEBase64(part, []byte(item.content)); err != nil {
 			return nil, err
 		}
 	}
@@ -108,6 +108,24 @@ func (s *smtpSender) verificationMessage(recipient mail.Address, username, verif
 
 func containsHeaderBreak(value string) bool {
 	return strings.ContainsAny(value, "\r\n")
+}
+
+func containsUnsafeMailText(value string) bool {
+	return strings.IndexFunc(value, func(r rune) bool {
+		return r == '\r' || r == '\n' || r == 0 || (r < 0x20 && r != '\t') || (r >= 0x7f && r <= 0x9f)
+	}) >= 0
+}
+
+func writeMIMEBase64(destination io.Writer, content []byte) error {
+	encoded := base64.StdEncoding.EncodeToString(content)
+	for len(encoded) > 76 {
+		if _, err := io.WriteString(destination, encoded[:76]+"\r\n"); err != nil {
+			return err
+		}
+		encoded = encoded[76:]
+	}
+	_, err := io.WriteString(destination, encoded+"\r\n")
+	return err
 }
 
 func (s *smtpSender) send(to string, message []byte) error {

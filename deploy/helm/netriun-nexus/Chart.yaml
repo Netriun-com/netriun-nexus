@@ -4,8 +4,8 @@ apiVersion: v2
 name: netriun-nexus
 description: Netriun Nexus multi-cloud orchestration control plane
 type: application
-version: 0.2.31
-appVersion: "0.1.31"
+version: 0.2.32
+appVersion: "0.1.32"
 home: https://netriun.com/products
 icon: https://raw.githubusercontent.com/Netriun-com/netriun-nexus/main/internal/app/web/logo.svg
 sources:
