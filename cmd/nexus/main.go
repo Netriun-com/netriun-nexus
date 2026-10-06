@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Command nexus starts the Netriun Nexus service.
 package main
 

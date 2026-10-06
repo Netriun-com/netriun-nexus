@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 CREATE TABLE IF NOT EXISTS workspaces (
  id bigserial PRIMARY KEY,
  name text NOT NULL CHECK(length(name) BETWEEN 2 AND 100),

@@ -2,13 +2,18 @@
 
 Netriun Nexus is a multi-tenant control plane for orchestrating multi-cloud operations, approvals, access, and live infrastructure health from one place. It includes PostgreSQL, Redis, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
 
-Nexus is evolving into a single-image product delivered as Netriun Cloud, a
-free self-hosted Community edition, and a licensed self-hosted Enterprise
-edition. The approved behavior and implementation sequence are documented in
+Nexus is evolving into an open-core product: a public Community image, optional
+proprietary Enterprise components, and private Netriun Cloud infrastructure.
+The approved behavior and implementation sequence are documented in
 the [product definition](docs/product-definition.md), [self-hosted specification](docs/self-hosted-spec.md),
 [staging specification](docs/staging.md), and [delivery roadmap](docs/roadmap.md).
-The repository remains `UNLICENSED` until a redistribution license is selected;
-source availability alone does not grant permission to redistribute it.
+Netriun Nexus uses an open-core model. The Community/Core program, public API,
+CLI, and first-party provider implementations identified in [LICENSE.md](LICENSE.md)
+are Open Source under **AGPL-3.0-only**. Netriun Enterprise and Netriun Cloud
+implementations are separate proprietary boundaries and are not licensed by
+the AGPL. See the [licensing architecture](docs/licensing-architecture.md) and
+[dependency audit](docs/dependency-license-audit.md) before redistributing a
+build. The AGPL does not grant rights to Netriun trademarks or logos.
 
 ## Run locally
 
@@ -110,6 +115,15 @@ Azure uses a Microsoft Entra service principal scoped to a subscription. Google 
 ## Product documentation
 
 The portal includes a searchable Documentation page and a contextual **Help** button that opens the article relevant to the current page. Both read from `internal/app/web/docs.js`, so guidance stays consistent. The long-term structure is fixed as **Getting Started → Cloud Connections → Services → Access Management → Operations → Troubleshooting**; use the [documentation map](docs/index.md) when expanding it in later phases.
+
+## License
+
+The Open Source Work is licensed under `AGPL-3.0-only`; its exact path scope
+and exclusions are defined in [LICENSE.md](LICENSE.md), with the full license
+text in [LICENSE](LICENSE). Third-party components retain their own licenses
+and notices. Documentation licensing, the Enterprise commercial license, and
+the trademark policy remain separate decisions and are not implied by the
+software license.
 
 ## Go development
 

@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_required boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS identity_providers (

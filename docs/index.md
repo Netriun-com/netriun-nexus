@@ -7,6 +7,7 @@ This is the canonical information architecture for product documentation. Keep t
 - Start with Netriun Nexus
 - Product editions and delivery model — see [product definition](product-definition.md)
 - Self-hosted installation and licensing contract — see [self-hosted specification](self-hosted-spec.md)
+- Open-core license boundary — see [licensing architecture](licensing-architecture.md)
 - Workspace registration and email verification
 - Team members and the Community workspace limit
 - Portal navigation: choose one active cloud provider, then select one or more accounts from that provider
@@ -45,6 +46,7 @@ This is the canonical information architecture for product documentation. Keep t
 - Local, Docker, and Kubernetes operation
 - Staging topology and promotion checks — see [staging specification](staging.md)
 - Milestone implementation order — see [delivery roadmap](roadmap.md)
+- Dependency licensing and release obligations — see [dependency license audit](dependency-license-audit.md)
 - Legacy migration — see [migration guide](migration.md)
 
 ## 6. Troubleshooting

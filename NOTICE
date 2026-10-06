@@ -1,0 +1,26 @@
+Netriun Nexus
+Copyright 2026 Netriun Nexus contributors
+
+The Open Source Work identified in LICENSE.md is licensed under
+AGPL-3.0-only. Third-party components retain their own copyright and license
+notices. The dependency inventory and audit date are recorded in
+docs/dependency-license-audit.md.
+
+This product includes software developed by Amazon.com, Inc. or its
+affiliates, including the AWS SDK for Go and Smithy Go:
+
+  AWS SDK for Go
+  Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+  Copyright 2014-2015 Stripe, Inc.
+
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+This product includes software developed by CoreOS, Inc.:
+
+  CoreOS Project
+  Copyright 2014 CoreOS, Inc.
+  This product includes software developed at CoreOS, Inc.
+  (http://www.coreos.com/).
+
+The notices above reproduce NOTICE material shipped by linked Apache-2.0
+dependencies. They do not change those components' licenses.

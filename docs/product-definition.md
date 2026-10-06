@@ -11,13 +11,15 @@ Netriun Nexus is a multi-tenant cloud operations control plane. It gives a team
 one workspace for cloud inventory, safe lifecycle operations, access control,
 audit history, and cost reporting across multiple providers.
 
-Nexus is delivered from one codebase and one container image in three forms:
+Nexus is delivered from one stable public core contract in three forms. The
+Community image contains only the AGPL Open Source Work; Enterprise and Cloud
+compose it with separately built proprietary components:
 
 | Form | Operator | Entitlement source | Intended use |
 | --- | --- | --- | --- |
-| Nexus Cloud | Netriun | Netriun control plane | Managed service |
-| Nexus Community | Customer | Built-in free entitlement | Free self-hosted use |
-| Nexus Enterprise | Customer | Signed offline license | Licensed self-hosted use |
+| Nexus Cloud | Netriun | Netriun control plane | Public core plus private managed-service infrastructure |
+| Nexus Community | Customer | Built-in free entitlement | Public AGPL self-hosted image |
+| Nexus Enterprise | Customer | Signed offline license | Public core plus licensed proprietary component(s) |
 
 Community is a usable product, not a time-limited trial. Expiry or absence of an
 Enterprise license must never make customer data unreadable.
@@ -58,7 +60,9 @@ API responses, license payload, tests, and documentation.
    data remains readable and exportable where the Community contract permits it.
 5. Customer cloud credentials and inventory stay inside the selected deployment
    boundary. License validation must not require sending them to Netriun.
-6. Cloud and self-hosted installations use the same migrations, APIs, and image.
+6. Cloud and self-hosted installations share versioned core migrations and API
+   contracts. They do not have to use the same artifact: proprietary code must
+   not be published inside the Community image.
 
 ## Current scope
 
@@ -70,10 +74,12 @@ model must not encode provider-specific commercial assumptions.
 
 ## Decisions still requiring explicit approval
 
-- The repository and redistribution license. `UNLICENSED` is not a Community
-  distribution license and must be replaced before a public self-hosted beta.
+- The Enterprise commercial license, documentation license, trademark policy,
+  and contributor agreement. The Open Source Work is now AGPL-3.0-only with
+  explicit Enterprise and Cloud exclusions.
+- The Redis server version/license used by the Community distribution; see the
+  [dependency license audit](dependency-license-audit.md).
 - Final commercial prices and Enterprise limit values.
 - The customer/license issuing workflow and support terms.
 
 Implementation details are defined in [the self-hosted specification](self-hosted-spec.md).
-

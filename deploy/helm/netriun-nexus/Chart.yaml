@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
 apiVersion: v2
 name: netriun-nexus
 description: Netriun Nexus multi-cloud orchestration control plane
 type: application
-version: 0.2.28
-appVersion: "0.1.28"
+version: 0.2.29
+appVersion: "0.1.29"
 home: https://netriun.com/products
 icon: https://raw.githubusercontent.com/Netriun-com/netriun-nexus/main/internal/app/web/logo.svg
 sources:

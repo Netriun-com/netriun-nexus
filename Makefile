@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
 IMAGE_REPO ?= ghcr.io/netriun-com
 IMAGE_NAME ?= netriun-nexus
 IMAGE_TAG ?= dev

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Package cloud isolates AWS SDK operations from portal persistence and HTTP.
 package cloud
 

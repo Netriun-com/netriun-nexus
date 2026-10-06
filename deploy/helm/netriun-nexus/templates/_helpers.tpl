@@ -1,3 +1,5 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+
 {{- define "netriun-nexus.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}

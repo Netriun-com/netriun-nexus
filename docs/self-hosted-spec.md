@@ -100,12 +100,16 @@ license signatures, cloud secrets, or sensitive payloads.
 
 ## Distribution and supply chain
 
-The canonical image is `ghcr.io/netriun-com/netriun-nexus`. Release images are
-built once, scanned, published, and keylessly signed. Kubernetes production
-deployments should pin an immutable version or digest and verify provenance in
-their delivery policy. Community and Enterprise use the same artifact.
+The canonical Community image is `ghcr.io/netriun-com/netriun-nexus`. Release
+images are built once, scanned, published, and keylessly signed. Kubernetes
+production deployments should pin an immutable version or digest and verify
+provenance in their delivery policy. Enterprise uses this public core plus a
+separately built, licensed proprietary component; Netriun Cloud uses the public
+core plus private service infrastructure. Their integration contracts and
+version compatibility must be explicit before the first Enterprise build.
 
-The public self-hosted beta is blocked until the repository license has been
-chosen explicitly and the chart, image visibility, upgrade path, backup/restore,
-and entitlement tests meet the acceptance criteria in [the roadmap](roadmap.md).
-
+The Open Source Work license and proprietary boundaries are defined in the
+root `LICENSE.md`. The public self-hosted beta remains blocked until the Redis
+runtime licensing decision, chart, image visibility, upgrade path,
+backup/restore, third-party notices, and entitlement tests meet the acceptance
+criteria in [the roadmap](roadmap.md).

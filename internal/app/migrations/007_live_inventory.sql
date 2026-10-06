@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 ALTER TABLE settings DROP COLUMN IF EXISTS collector_interval_minutes;
 
 CREATE TABLE IF NOT EXISTS service_snapshots (

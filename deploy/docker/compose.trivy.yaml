@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Trivy is pinned by version and digest so CI scans the exact tool reviewed here.
 # It receives a saved image read-only and never gets access to the Docker socket.
 name: nexus-trivy

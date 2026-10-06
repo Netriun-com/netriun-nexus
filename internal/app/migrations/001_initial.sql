@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 CREATE TABLE IF NOT EXISTS users (
  id bigserial PRIMARY KEY, username text NOT NULL UNIQUE CHECK(length(username) BETWEEN 3 AND 100),
  password_hash text NOT NULL, role text NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),

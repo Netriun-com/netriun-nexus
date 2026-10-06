@@ -19,7 +19,7 @@ security or data-safety prerequisite.
 - [x] Define Cloud, Community, and Enterprise delivery forms.
 - [x] Define stable features, limits, expiry behavior, and data-access rules.
 - [x] Define staging topology and release promotion.
-- [ ] Select and publish the repository/redistribution license.
+- [x] Select and publish the AGPL-3.0-only Open Source Work license and explicit proprietary boundaries.
 - [ ] Approve final Community limits and commercial packaging.
 
 Exit: product and legal decisions permit public self-hosted distribution.
@@ -34,7 +34,20 @@ Exit: product and legal decisions permit public self-hosted distribution.
 
 Exit: Community behavior is centrally enforced without license parsing.
 
-## M3 — Offline Enterprise license
+## M3 — Open-core licensing boundary
+
+- [x] Publish the unmodified AGPL-3.0-only license text.
+- [x] Define the exact Community/Core, Enterprise, and Netriun Cloud path boundary.
+- [x] Map current packages into the target `core/community/providers/api/cli` architecture.
+- [x] Add source SPDX identifiers and preserve required dependency notices.
+- [x] Audit linked Go dependencies and declared container/runtime licenses.
+- [x] Record unresolved legal/product decisions without silently selecting terms.
+
+Exit: every current path has a documented licensing destination, the Open
+Source Work is redistributable under AGPL-3.0-only, and proprietary code has a
+non-AGPL boundary.
+
+## M4 — Offline Enterprise license
 
 - [ ] Implement canonical payload and Ed25519 signature verification.
 - [ ] Add key rotation by `key_id` and golden interoperability vectors.
@@ -44,7 +57,7 @@ Exit: Community behavior is centrally enforced without license parsing.
 
 Exit: a test license deterministically changes entitlements with no network call.
 
-## M4 — Product gates and limits
+## M5 — Product gates and limits
 
 - [ ] Enforce identity, workspace, cloud-account, and retention limits.
 - [ ] Gate custom access roles, OIDC/SAML, billing reports, exports, and schedules.
@@ -53,7 +66,7 @@ Exit: a test license deterministically changes entitlements with no network call
 
 Exit: no premium API can be activated by hiding or modifying the web UI.
 
-## M5 — Administration experience
+## M6 — Administration experience
 
 - [ ] Add edition/status/limits/license metadata to Workspace Settings.
 - [ ] Add license installation/replacement workflow for self-hosted administrators.
@@ -62,7 +75,7 @@ Exit: no premium API can be activated by hiding or modifying the web UI.
 
 Exit: an operator can diagnose and replace a license without database access.
 
-## M6 — Self-hosted distribution
+## M7 — Self-hosted distribution
 
 - [ ] Finalize public image access, versioning, SBOM/provenance, and signature docs.
 - [ ] Add Community and licensed examples to Compose and Helm.
@@ -71,7 +84,7 @@ Exit: an operator can diagnose and replace a license without database access.
 
 Exit: a new operator can install and safely upgrade using published artifacts only.
 
-## M7 — Isolated staging
+## M8 — Isolated staging
 
 - [ ] Create `nexus-selfhosted-dev` with isolated state and secrets.
 - [ ] Deploy an immutable signed image.
@@ -80,7 +93,7 @@ Exit: a new operator can install and safely upgrade using published artifacts on
 
 Exit: all checks in [the staging specification](staging.md) pass.
 
-## M8 — Community beta
+## M9 — Community beta
 
 - [ ] Resolve all release-blocking security and data-loss findings.
 - [ ] Publish the selected license, support boundary, and known limitations.

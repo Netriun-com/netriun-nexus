@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
 

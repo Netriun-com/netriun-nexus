@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // migrate-legacy reads a legacy database through sqlite3 in read-only mode.
 // It imports atomically into a PostgreSQL database initialized by Netriun Nexus.
 package main

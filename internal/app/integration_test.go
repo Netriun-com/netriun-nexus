@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
 package app
 
 import (
@@ -742,7 +744,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("cloud policy and reporting documentation is missing")
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.28"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.29", "Source (AGPL-3.0-only)"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}

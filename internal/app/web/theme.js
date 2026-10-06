@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
 'use strict';
 (() => {
   const media = window.matchMedia('(prefers-color-scheme: dark)');

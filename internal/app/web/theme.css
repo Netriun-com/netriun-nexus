@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 :root{--green:#45f0c2;--lime:#6ee7b7;--muted:#91a1b8;--line:rgba(255,255,255,.1);--dark:#050816;color:#f7fbff;background:#050816;font-family:"Space Grotesk",Inter,ui-sans-serif,system-ui,sans-serif}
 body{background:#050816;color:#f7fbff;background-image:linear-gradient(rgba(80,130,170,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(80,130,170,.07) 1px,transparent 1px),radial-gradient(circle at 12% 38%,rgba(33,226,190,.11),transparent 27%),radial-gradient(circle at 92% 40%,rgba(51,143,255,.13),transparent 30%);background-size:54px 54px,54px 54px,auto,auto;background-attachment:fixed}
 .brand{color:#f7fbff;font-size:23px;letter-spacing:.1px;font-weight:700;gap:10px;padding-left:7px}.brand img{width:34px;height:34px}.sidebar{background:rgba(5,8,22,.9);border-color:var(--line);backdrop-filter:blur(18px)}
