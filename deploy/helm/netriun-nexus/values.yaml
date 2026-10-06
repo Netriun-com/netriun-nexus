@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.29"
+  tag: "0.1.30"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -63,6 +63,14 @@ config:
     fromAddress: s.amrei@netriun.com
     fromName: Netriun Nexus
 
+enterprise:
+  # Optional proprietary service. Core remains fully functional when empty or
+  # unavailable.
+  serviceURL: ""
+  # Optional Secret containing an offline signed license document.
+  licenseSecretName: ""
+  licenseSecretKey: license.json
+
 # Create this Secret before installation. It must contain DATABASE_URL,
 # REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD,
 # SMTP_USERNAME, and SMTP_PASSWORD.
@@ -117,15 +125,26 @@ postgresql:
       cpu: 1000m
       memory: 1Gi
 
-redis:
+valkey:
   enabled: false
-  name: nexus-redis
-  image: redis:7-alpine
+  name: nexus-valkey
+  # linux/amd64 manifest digest for valkey/valkey:8.1.10-alpine.
+  image: valkey/valkey:8.1.10-alpine@sha256:32627109abf6f741121096b45c732f758876803efd7b2e1018ebc0350d117119
+  # Kept as nexus-redis so existing REDIS_URL values remain compatible.
+  serviceName: nexus-redis
   passwordKey: REDIS_PASSWORD
   persistence:
     size: 2Gi
-    hostPath: /var/lib/netriun-nexus/redis
+    hostPath: /var/lib/netriun-nexus/valkey
     nodeName: ""
+  # Retain the former Redis PV/PVC during the rollback window. These resources
+  # are not mounted by Valkey and require explicit approval before cleanup.
+  legacyRedisStorage:
+    enabled: false
+    pvName: nexus-redis-pv
+    pvcName: nexus-redis
+    size: 2Gi
+    hostPath: /var/lib/netriun-nexus/redis
   resources:
     requests:
       cpu: 50m

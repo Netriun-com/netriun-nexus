@@ -20,7 +20,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/netriun/nexus/internal/enterprise"
 	"github.com/netriun/nexus/internal/entitlements"
+	"github.com/netriun/nexus/internal/licensing"
 	"github.com/netriun/nexus/internal/secure"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -39,6 +41,8 @@ type App struct {
 	Mailer                     mailSender
 	Policy                     *PolicyEngine
 	Entitlements               *entitlements.Service
+	Enterprise                 *enterprise.Client
+	InstallationID             string
 	backgroundCtx              context.Context
 	backgroundStop             context.CancelFunc
 	backgroundWG               sync.WaitGroup
@@ -97,7 +101,6 @@ func New(ctx context.Context) (*App, error) {
 	backgroundCtx, backgroundStop := context.WithCancel(context.Background())
 	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, accountSlots: make(chan struct{}, 4), regionSlots: make(chan struct{}, 6)}
 	a.Policy = &PolicyEngine{DB: db}
-	a.Entitlements = entitlements.New(entitlements.CommunityProvider{Mode: cfg.deploymentMode})
 	a.refreshRunner = a.collectAccounts
 	a.edsRefreshRunner = a.refreshEDSService
 	a.ossRefreshRunner = a.collectOSSBuckets
@@ -105,6 +108,33 @@ func New(ctx context.Context) (*App, error) {
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
+	}
+	a.InstallationID, err = a.ensureInstallationID(ctx)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	a.Enterprise, err = enterprise.New(cfg.enterpriseServiceURL, nil)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	keyring, err := licensing.DefaultKeyring()
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	evaluation := licensing.Load(cfg.enterpriseLicensePath, licensing.Verifier{
+		Keys:           keyring,
+		DeploymentMode: cfg.deploymentMode,
+		InstallationID: a.InstallationID,
+	})
+	a.Entitlements = entitlements.New(licensing.Provider{
+		Community:  entitlements.CommunityProvider{Mode: cfg.deploymentMode},
+		Evaluation: evaluation,
+	})
+	if evaluation.Status != entitlements.StatusCommunity {
+		slog.Info("Enterprise license evaluated", "status", evaluation.Status, "reason", evaluation.Reason)
 	}
 	if err = a.bootstrap(ctx); err != nil {
 		a.Close()
@@ -250,6 +280,7 @@ func (a *App) Handler() http.Handler {
 	m.HandleFunc("POST /sso/{provider}/slo", a.samlLogoutCallback)
 	routes := map[string]http.HandlerFunc{
 		"GET /api/v1/entitlements":                   a.entitlementStatus,
+		"GET /api/v1/installation":                   a.installationStatus,
 		"GET /api/v1/summary":                        a.summary,
 		"GET /api/v1/reports/overview":               a.reportsOverview,
 		"GET /api/v1/reports/alibaba/billing":        a.alibabaBillingReport,

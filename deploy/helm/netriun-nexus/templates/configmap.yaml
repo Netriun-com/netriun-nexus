@@ -16,3 +16,7 @@ data:
   SMTP_PORT: {{ .Values.config.smtp.port | quote }}
   SMTP_FROM_ADDRESS: {{ .Values.config.smtp.fromAddress | quote }}
   SMTP_FROM_NAME: {{ .Values.config.smtp.fromName | quote }}
+  ENTERPRISE_SERVICE_URL: {{ .Values.enterprise.serviceURL | quote }}
+  {{- if .Values.enterprise.licenseSecretName }}
+  ENTERPRISE_LICENSE_PATH: "/var/run/netriun/license/license.json"
+  {{- end }}

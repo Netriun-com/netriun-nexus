@@ -8,6 +8,7 @@ This is the canonical information architecture for product documentation. Keep t
 - Product editions and delivery model — see [product definition](product-definition.md)
 - Self-hosted installation and licensing contract — see [self-hosted specification](self-hosted-spec.md)
 - Open-core license boundary — see [licensing architecture](licensing-architecture.md)
+- Offline Enterprise license behavior — see [Enterprise licensing](enterprise-licensing.md)
 - Workspace registration and email verification
 - Team members and the Community workspace limit
 - Portal navigation: choose one active cloud provider, then select one or more accounts from that provider
@@ -47,6 +48,8 @@ This is the canonical information architecture for product documentation. Keep t
 - Staging topology and promotion checks — see [staging specification](staging.md)
 - Milestone implementation order — see [delivery roadmap](roadmap.md)
 - Dependency licensing and release obligations — see [dependency license audit](dependency-license-audit.md)
+- Valkey decision, migration evidence, and rollback — see [Valkey runtime](redis-licensing.md)
+- Core/Enterprise process contract — see [Enterprise architecture](enterprise-architecture.md)
 - Legacy migration — see [migration guide](migration.md)
 
 ## 6. Troubleshooting

@@ -32,9 +32,9 @@ Create an isolated environment before the Community beta:
 | Proposed hostname | `nexus-selfhosted.netriun.com` |
 | Image | Immutable GHCR release tag or digest |
 
-It must have separate PostgreSQL, Redis, Secrets, encryption keys, SMTP test
+It must have separate PostgreSQL, Valkey, Secrets, encryption keys, SMTP test
 configuration, persistent volumes, Cloudflare hostname, and cloud test accounts.
-No database, Redis instance, Secret, or persistent volume may be shared with the
+No database, Valkey instance, Secret, or persistent volume may be shared with the
 current preview.
 
 ## Promotion flow
@@ -62,4 +62,3 @@ level, and rollback notes.
 10. The exact deployed digest has a passing vulnerability scan and valid signature.
 
 Do not put real customer credentials or production datasets in staging.
-

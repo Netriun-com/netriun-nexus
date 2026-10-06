@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netriun.com/schemas/nexus-enterprise-license-v1.json",
+  "title": "Netriun Nexus Enterprise offline license v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["license", "signature"],
+  "properties": {
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["license_id", "customer", "product", "edition", "deployment_mode", "entitlements", "issued_at", "not_before", "expires_at", "installation_binding", "license_version", "key_id"],
+      "properties": {
+        "license_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "customer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["organization_id", "organization_name"],
+          "properties": {
+            "organization_id": {"type": "string", "minLength": 1},
+            "organization_name": {"type": "string", "minLength": 1}
+          }
+        },
+        "product": {"const": "netriun-nexus"},
+        "edition": {"const": "enterprise"},
+        "deployment_mode": {"enum": ["self_hosted", "cloud"]},
+        "entitlements": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["features"],
+          "properties": {
+            "features": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"enum": ["advanced_sso", "identity_governance", "cost_management", "custom_report_builder", "scheduled_reports", "policy_automation", "ha_operations"]}
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "workspaces": {"type": "integer", "minimum": 0},
+                "human_identities": {"type": "integer", "minimum": 0},
+                "cloud_accounts": {"type": "integer", "minimum": 0},
+                "audit_retention_days": {"type": "integer", "minimum": 0}
+              }
+            }
+          }
+        },
+        "issued_at": {"type": "string", "format": "date-time"},
+        "not_before": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "installation_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": {"const": "installation_id"},
+            "value": {"type": "string", "minLength": 1}
+          }
+        },
+        "license_version": {"const": 1},
+        "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {"const": "Ed25519"},
+        "value": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    }
+  }
+}

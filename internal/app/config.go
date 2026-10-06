@@ -14,19 +14,21 @@ import (
 )
 
 type runtimeConfig struct {
-	databaseURL     string
-	redisURL        string
-	encryptionKey   string
-	origin          string
-	secureCookies   bool
-	trustedProxies  []*net.IPNet
-	smtpHost        string
-	smtpPort        string
-	smtpUsername    string
-	smtpPassword    string
-	smtpFromAddress string
-	smtpFromName    string
-	deploymentMode  entitlements.DeploymentMode
+	databaseURL           string
+	redisURL              string
+	encryptionKey         string
+	origin                string
+	secureCookies         bool
+	trustedProxies        []*net.IPNet
+	smtpHost              string
+	smtpPort              string
+	smtpUsername          string
+	smtpPassword          string
+	smtpFromAddress       string
+	smtpFromName          string
+	deploymentMode        entitlements.DeploymentMode
+	enterpriseLicensePath string
+	enterpriseServiceURL  string
 }
 
 func loadRuntimeConfig() (runtimeConfig, error) {
@@ -81,6 +83,8 @@ func loadRuntimeConfig() (runtimeConfig, error) {
 	if err != nil {
 		return c, err
 	}
+	c.enterpriseLicensePath = strings.TrimSpace(os.Getenv("ENTERPRISE_LICENSE_PATH"))
+	c.enterpriseServiceURL = strings.TrimSpace(os.Getenv("ENTERPRISE_SERVICE_URL"))
 	return c, nil
 }
 

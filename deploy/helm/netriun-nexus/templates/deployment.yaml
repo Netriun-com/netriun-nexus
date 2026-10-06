@@ -73,6 +73,21 @@ spec:
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.enterprise.licenseSecretName }}
+          volumeMounts:
+            - name: enterprise-license
+              mountPath: /var/run/netriun/license
+              readOnly: true
+          {{- end }}
+      {{- if .Values.enterprise.licenseSecretName }}
+      volumes:
+        - name: enterprise-license
+          secret:
+            secretName: {{ .Values.enterprise.licenseSecretName | quote }}
+            items:
+              - key: {{ .Values.enterprise.licenseSecretKey | quote }}
+                path: license.json
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -28,9 +28,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ccmp -d ccmp_test"
           --health-interval 5s --health-timeout 3s --health-retries 10
-      redis:
-        image: redis:7-alpine
+      valkey:
+        image: valkey/valkey:8.1.10-alpine@sha256:32627109abf6f741121096b45c732f758876803efd7b2e1018ebc0350d117119
         ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

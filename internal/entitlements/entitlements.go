@@ -10,22 +10,43 @@ import (
 type Feature string
 
 const (
+	// Core capabilities are published under AGPL-3.0-only and remain enabled in
+	// Community. Keep these keys for API compatibility; they are not Enterprise
+	// license gates.
 	FeatureSSO               Feature = "sso"
 	FeatureCustomAccessRoles Feature = "custom_access_roles"
 	FeatureBillingReports    Feature = "billing_reports"
 	FeatureBillingExport     Feature = "billing_export"
-	FeatureScheduledReports  Feature = "scheduled_reports"
-	FeatureHAGuidance        Feature = "ha_guidance"
+
+	// Enterprise capabilities are implemented out of process and are the only
+	// capabilities that an Enterprise license may enable.
+	FeatureAdvancedSSO         Feature = "advanced_sso"
+	FeatureIdentityGovernance  Feature = "identity_governance"
+	FeatureCostManagement      Feature = "cost_management"
+	FeatureCustomReportBuilder Feature = "custom_report_builder"
+	FeatureScheduledReports    Feature = "scheduled_reports"
+	FeaturePolicyAutomation    Feature = "policy_automation"
+	FeatureHAOperations        Feature = "ha_operations"
 )
 
-var KnownFeatures = []Feature{
+var CoreFeatures = []Feature{
 	FeatureSSO,
 	FeatureCustomAccessRoles,
 	FeatureBillingReports,
 	FeatureBillingExport,
-	FeatureScheduledReports,
-	FeatureHAGuidance,
 }
+
+var EnterpriseFeatures = []Feature{
+	FeatureAdvancedSSO,
+	FeatureIdentityGovernance,
+	FeatureCostManagement,
+	FeatureCustomReportBuilder,
+	FeatureScheduledReports,
+	FeaturePolicyAutomation,
+	FeatureHAOperations,
+}
+
+var KnownFeatures = append(append([]Feature{}, CoreFeatures...), EnterpriseFeatures...)
 
 type Limit string
 
@@ -81,6 +102,14 @@ type Snapshot struct {
 	Status         Status           `json:"status"`
 	Features       map[Feature]bool `json:"features"`
 	Limits         map[Limit]int    `json:"limits"`
+	License        *LicenseMetadata `json:"license,omitempty"`
+}
+
+type LicenseMetadata struct {
+	LicenseID string `json:"license_id,omitempty"`
+	KeyID     string `json:"key_id,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type Provider interface {
@@ -95,6 +124,9 @@ func (p CommunityProvider) Snapshot(_ context.Context, _ int64) Snapshot {
 	features := make(map[Feature]bool, len(KnownFeatures))
 	for _, feature := range KnownFeatures {
 		features[feature] = false
+	}
+	for _, feature := range CoreFeatures {
+		features[feature] = true
 	}
 	return Snapshot{
 		DeploymentMode: p.Mode,

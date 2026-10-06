@@ -49,18 +49,27 @@ non-AGPL boundary.
 
 ## M4 — Offline Enterprise license
 
-- [ ] Implement canonical payload and Ed25519 signature verification.
-- [ ] Add key rotation by `key_id` and golden interoperability vectors.
-- [ ] Add installation identity, file loading, atomic replacement, and status audit.
-- [ ] Implement grace/expired/invalid fallback behavior.
+- [x] Replace the Community Redis runtime with pinned Valkey and preserve rollback storage.
+- [x] Implement RFC 8785 canonical payload and Ed25519 signature verification.
+- [x] Add versioned `key_id` rotation states and interoperability/security vectors.
+- [x] Add stable PostgreSQL installation identity and read-only file loading.
+- [x] Implement five-minute skew, 14-day grace, and non-destructive Community fallback.
+- [x] Define the separate `/enterprise/v1` HTTP/JSON process contract.
+- [x] Enforce Community human-identity, cloud-account, and retention limits.
 - [ ] Add an offline internal license issuer outside this repository.
+- [ ] Perform the production key ceremony and add only its public key to Core.
+- [ ] Add atomic live reload and persistent license-status audit events.
 
-Exit: a test license deterministically changes entitlements with no network call.
+Core implementation exit achieved: an ephemeral signed test license
+deterministically changes entitlements with no network call. Production license
+activation remains blocked on the private issuer and public-key ceremony.
 
 ## M5 — Product gates and limits
 
-- [ ] Enforce identity, workspace, cloud-account, and retention limits.
-- [ ] Gate custom access roles, OIDC/SAML, billing reports, exports, and schedules.
+- [ ] Decide and enforce the installation-wide workspace limit without breaking public registration.
+- [x] Enforce identity, cloud-account, and retention limits.
+- [ ] Gate only the approved new Enterprise capabilities; existing AGPL SSO,
+  roles, billing reports, and exports remain Core and must not be gated.
 - [ ] Cover every gated mutation with bypass-resistant integration tests.
 - [ ] Preserve read access and safe degradation after license expiry.
 

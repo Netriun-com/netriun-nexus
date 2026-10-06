@@ -30,7 +30,7 @@ moves happen, `LICENSE.md` maps every current path explicitly.
 
 | Current path/package | Target section | License/status | Notes |
 | --- | --- | --- | --- |
-| `internal/entitlements` | `core` | AGPL-3.0-only | Edition-neutral feature and limit decisions; future Enterprise providers implement interfaces without changing Community decisions. |
+| `internal/entitlements`, `internal/licensing`, `internal/enterprise` | `core` | AGPL-3.0-only | Edition decisions, public-key verification, and the optional HTTP client are public Core boundary code; proprietary implementations remain out of process. |
 | `internal/secure` | `core` | AGPL-3.0-only | Encryption and password/security primitives. |
 | Provider-neutral parts of `internal/app` | `core` | AGPL-3.0-only | Domain orchestration, persistence, authorization, audit, refresh jobs, and SSO contracts must be extracted gradually. |
 | `internal/app/web` except `logo.svg` | `community` | AGPL-3.0-only | Embedded Community portal. The logo is a brand asset outside the software grant. |
@@ -107,4 +107,4 @@ review:
 3. trademark and brand-asset usage policy;
 4. proprietary Enterprise commercial license text;
 5. Enterprise process/plugin boundary and distribution model; and
-6. Redis runtime version/license choice described in the dependency audit.
+6. production Enterprise public-key ceremony and proprietary issuer controls.

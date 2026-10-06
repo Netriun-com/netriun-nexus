@@ -9,7 +9,7 @@ TRIVY_CACHE ?= .dev/trivy-cache
 
 .PHONY: run dev-deps build test vet image image-check image-save image-scan up down
 
-# Run the Go process on the host while PostgreSQL and Redis stay in containers.
+# Run the Go process on the host while PostgreSQL and Valkey stay in containers.
 # LOCAL_PORT, POSTGRES_PORT and REDIS_PORT may be overridden when their defaults
 # are already in use. RUN_DATABASE_URL/RUN_REDIS_URL can target external services.
 run: dev-deps
@@ -25,7 +25,7 @@ run: dev-deps
 	COOKIE_SECURE=false \
 	go run ./cmd/nexus
 dev-deps:
-	docker compose up -d postgres redis
+	docker compose up -d postgres valkey
 build:
 	go build -trimpath -o bin/nexus ./cmd/nexus
 test:

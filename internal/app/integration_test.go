@@ -62,6 +62,13 @@ func TestIntegration(t *testing.T) {
 	mailer := &fakeMailer{}
 	a.Mailer = mailer
 	defer a.Close()
+	if !strings.HasPrefix(a.InstallationID, "ins_") {
+		t.Fatalf("stable installation ID was not created: %q", a.InstallationID)
+	}
+	firstInstallationID := a.InstallationID
+	if repeated, repeatErr := a.ensureInstallationID(ctx); repeatErr != nil || repeated != firstInstallationID {
+		t.Fatalf("installation ID changed across initialization: first=%q repeated=%q err=%v", firstInstallationID, repeated, repeatErr)
+	}
 	var snapshotTable, legacyInterval bool
 	if err = a.DB.QueryRow(ctx, "SELECT to_regclass('service_snapshots') IS NOT NULL").Scan(&snapshotTable); err != nil || !snapshotTable {
 		t.Fatal("live inventory snapshot migration was not applied")
@@ -143,6 +150,10 @@ func TestIntegration(t *testing.T) {
 	request("POST", "/api/v1/accounts/test", "", map[string]string{"provider": "aws"}, 401)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "testadmin@example.com", "password": "wrong"}, 401)
 	adminToken := login("testadmin@example.com", "Test-admin-password1!")
+	installation := request("GET", "/api/v1/installation", adminToken, nil, 200)
+	if !strings.Contains(installation.Body.String(), firstInstallationID) || !strings.Contains(installation.Body.String(), `"license_status":"community"`) {
+		t.Fatalf("unexpected installation status: %s", installation.Body.String())
+	}
 	proveConnection := func(email, provider string, credentials Credentials) {
 		t.Helper()
 		var u User
@@ -181,6 +192,8 @@ func TestIntegration(t *testing.T) {
 	gcpKey := validGCPServiceAccountJSON(t)
 	proveConnection("testadmin@example.com", "gcp", Credentials{ProjectID: "example-project", ServiceAccountJSON: gcpKey})
 	gcpAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "GCP Production", "provider": "gcp", "owner": "Platform", "group_id": group2, "regions": []string{"europe-west1"}, "credentials": map[string]string{"project_id": "example-project", "service_account_json": gcpKey}}, 200))
+	proveConnection("testadmin@example.com", "aws", Credentials{AccessKey: "limit-key", SecretKey: "limit-secret"})
+	request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Over Community Limit", "provider": "aws", "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "limit-key", "secret_access_key": "limit-secret"}}, http.StatusPaymentRequired)
 	for _, providerAccount := range []struct {
 		id       int64
 		provider string
@@ -245,7 +258,7 @@ func TestIntegration(t *testing.T) {
 	adminEntitlements := request("GET", "/api/v1/entitlements", adminToken, nil, 200)
 	viewerEntitlements := request("GET", "/api/v1/entitlements", viewer, nil, 200)
 	for _, response := range []*httptest.ResponseRecorder{adminEntitlements, viewerEntitlements} {
-		if !strings.Contains(response.Body.String(), `"deployment_mode":"self_hosted"`) || !strings.Contains(response.Body.String(), `"edition":"community"`) || !strings.Contains(response.Body.String(), `"sso":false`) || !strings.Contains(response.Body.String(), `"cloud_accounts":{"allowed":5`) {
+		if !strings.Contains(response.Body.String(), `"deployment_mode":"self_hosted"`) || !strings.Contains(response.Body.String(), `"edition":"community"`) || !strings.Contains(response.Body.String(), `"sso":true`) || !strings.Contains(response.Body.String(), `"advanced_sso":false`) || !strings.Contains(response.Body.String(), `"cloud_accounts":{"allowed":5`) {
 			t.Fatalf("unexpected Community entitlement status: %s", response.Body.String())
 		}
 	}
@@ -688,7 +701,8 @@ func TestIntegration(t *testing.T) {
 	request("PUT", fmt.Sprintf("/api/v1/users/%d", uid), adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Changed-password1!", "role": "user"}, 200)
 	request("GET", "/api/v1/auth/me", viewer, nil, 401)
 	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 6}, 400)
-	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 90}, 200)
+	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 31}, http.StatusPaymentRequired)
+	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 30}, 200)
 	// AWS mutations fail closed when their mandatory intent audit cannot be stored.
 	if _, err = a.DB.Exec(ctx, "ALTER TABLE audit_log RENAME TO audit_log_unavailable"); err != nil {
 		t.Fatal(err)
@@ -711,7 +725,7 @@ func TestIntegration(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		request("POST", "/api/v1/users", adminToken, map[string]string{"username": fmt.Sprintf("member-%d", i), "email": fmt.Sprintf("member-%d@example.com", i), "password": "Member-password1!", "role": "user"}, 200)
 	}
-	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, 409)
+	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, http.StatusPaymentRequired)
 	// A per-account lease coalesces overlapping provider calls without changing another worker's lock.
 	accountLockKey := fmt.Sprintf("collector:lock:%d:compute:%d", workspaceID, account1)
 	a.Redis.Set(ctx, accountLockKey, "other-worker", time.Minute)

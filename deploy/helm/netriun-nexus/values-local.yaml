@@ -4,7 +4,7 @@ fullnameOverride: nexus
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.29"
+  tag: "0.1.30"
   pullPolicy: IfNotPresent
 
 service:
@@ -35,7 +35,9 @@ postgresql:
   persistence:
     nodeName: k8s-node01
 
-redis:
+valkey:
   enabled: true
   persistence:
     nodeName: k8s-node01
+  legacyRedisStorage:
+    enabled: true

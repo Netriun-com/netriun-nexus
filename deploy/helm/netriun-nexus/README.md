@@ -1,12 +1,12 @@
 # Netriun Nexus Helm chart
 
 By default, this chart deploys only the Nexus application and expects external
-PostgreSQL and Redis services. For the current local cluster,
-`values-local.yaml` also deploys single-replica PostgreSQL and Redis StatefulSets
+PostgreSQL and Valkey services. For the current local cluster,
+`values-local.yaml` also deploys single-replica PostgreSQL and Valkey StatefulSets
 with retained host-path volumes on `k8s-node01`.
 
-Redis also stores short-lived asynchronous compute/EDS/OSS/security-group refresh-job state and
-per-account/service collector leases. Keep Redis available during application rollouts;
+Valkey stores short-lived asynchronous compute/EDS/OSS/security-group refresh-job state and
+per-account/service collector leases. Keep Valkey available during application rollouts;
 the latest inventory snapshot remains in PostgreSQL if an in-flight job is lost.
 
 Create the application Secret before installation. Do not commit literal
@@ -28,8 +28,13 @@ SMTP server, port, sender address, and sender display name are non-secret chart
 values under `config.smtp`. Keep the SMTP app password only in the existing
 Kubernetes Secret.
 
-When the bundled local PostgreSQL and Redis instances are enabled, the same
+When the bundled local PostgreSQL and Valkey instances are enabled, the same
 Secret must also contain `POSTGRES_PASSWORD` and `REDIS_PASSWORD`.
+
+The `REDIS_URL`/`REDIS_PASSWORD` names are retained as wire-protocol
+compatibility configuration. To install an offline license, create a separate
+Secret containing `license.json` and set `enterprise.licenseSecretName`. The
+license is mounted read-only; no private signing key belongs in Kubernetes.
 
 Render and inspect without deploying:
 
@@ -63,3 +68,7 @@ The bundled databases are appropriate for this local first deployment, but
 their host-path storage is tied to `k8s-node01`. Back up
 `/var/lib/netriun-nexus` on that node and move to replicated or managed storage
 before treating the cluster as highly available.
+
+The former `nexus-redis` PVC is intentionally retained during the Valkey
+rollback window. See [the migration record](../../../docs/redis-licensing.md)
+before rollback or cleanup.

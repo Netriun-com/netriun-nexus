@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/netriun/nexus/internal/entitlements"
 )
 
 type Credentials struct {
@@ -134,7 +136,28 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if id == 0 {
-		err = a.DB.QueryRow(r.Context(), "INSERT INTO cloud_accounts(workspace_id,name,provider,owner,group_id,credentials,regions) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id", current(r).WorkspaceID, in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions).Scan(&id)
+		tx, beginErr := a.DB.Begin(r.Context())
+		if beginErr != nil {
+			dbError(w, beginErr)
+			return
+		}
+		defer tx.Rollback(r.Context())
+		if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock($1)", current(r).WorkspaceID); err == nil {
+			var count int
+			err = tx.QueryRow(r.Context(), "SELECT count(*) FROM cloud_accounts WHERE workspace_id=$1", current(r).WorkspaceID).Scan(&count)
+			if err == nil {
+				if denial := a.Entitlements.RequireLimit(r.Context(), current(r).WorkspaceID, entitlements.LimitCloudAccounts, count+1); denial != nil {
+					entitlementProblem(w, denial)
+					return
+				}
+			}
+		}
+		if err == nil {
+			err = tx.QueryRow(r.Context(), "INSERT INTO cloud_accounts(workspace_id,name,provider,owner,group_id,credentials,regions) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id", current(r).WorkspaceID, in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions).Scan(&id)
+		}
+		if err == nil {
+			err = tx.Commit(r.Context())
+		}
 	} else {
 		tx, beginErr := a.DB.Begin(r.Context())
 		if beginErr != nil {

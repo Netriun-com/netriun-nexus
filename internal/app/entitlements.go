@@ -43,6 +43,7 @@ SELECT
 		"status":          snapshot.Status,
 		"features":        snapshot.Features,
 		"limits":          limits,
+		"license":         snapshot.License,
 	})
 }
 

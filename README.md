@@ -1,6 +1,6 @@
 # Netriun Nexus
 
-Netriun Nexus is a multi-tenant control plane for orchestrating multi-cloud operations, approvals, access, and live infrastructure health from one place. It includes PostgreSQL, Redis, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
+Netriun Nexus is a multi-tenant control plane for orchestrating multi-cloud operations, approvals, access, and live infrastructure health from one place. It includes PostgreSQL, Valkey, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
 
 Nexus is evolving into an open-core product: a public Community image, optional
 proprietary Enterprise components, and private Netriun Cloud infrastructure.
@@ -43,7 +43,7 @@ docker compose down
 
 If port 8080 is occupied, set `PORT` and the matching `APP_ORIGIN` in `.env` (for example, `PORT=18080` and `APP_ORIGIN=http://localhost:18080`).
 
-Persistent volumes survive `down`. The portal, PostgreSQL and Redis are published on loopback only; they are not reachable through external network interfaces. Database ports are exposed locally to support host-based Go development.
+Persistent volumes survive `down`. The portal, PostgreSQL and Valkey are published on loopback only; they are not reachable through external network interfaces. Database ports are exposed locally to support host-based Go development.
 
 When upgrading an existing installation from Netriun CCMP, stop the old application and database cleanly before copying its PostgreSQL and Redis volumes to the Nexus volume names. Never copy a live PostgreSQL data directory. Keep the old volumes as a rollback/forensic backup until the Nexus installation has been verified.
 
@@ -62,7 +62,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
 - Workspace-scoped OIDC and SAML 2.0 single sign-on with JIT provisioning, claim/group-to-team mapping, and owner break-glass login.
-- Redis sessions, local and federated logout, login rate limiting, asynchronous refresh-job status, and per-account live-refresh leases.
+- Valkey-backed sessions, local and federated logout, login rate limiting, asynchronous refresh-job status, and per-account live-refresh leases.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.
 - Searchable in-app Documentation Center and contextual Help, backed by one structured content source and the stable [documentation map](docs/index.md).
@@ -127,7 +127,7 @@ software license.
 
 ## Go development
 
-Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Redis in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default.
+Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Valkey in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default. The `REDIS_URL` name remains for protocol compatibility.
 
 Email verification uses SMTP with mandatory STARTTLS. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`; use an app password rather than a primary mailbox password.
 
@@ -140,11 +140,11 @@ go build -o bin/nexus ./cmd/nexus
 
 If a default local port is occupied, set `LOCAL_PORT`, `POSTGRES_PORT`, or `REDIS_PORT` in `.env`. Advanced setups can provide `RUN_DATABASE_URL` and `RUN_REDIS_URL` to make the host process use external dependencies.
 
-Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided. **Use isolated databases**: tests truncate application tables and flush the selected Redis database. PostgreSQL database name must contain `ccmp_test`. CI provisions these dependencies.
+Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided. **Use isolated databases**: tests truncate application tables and flush the selected Valkey logical database. PostgreSQL database name must contain `ccmp_test`. CI provisions these dependencies.
 
 ## Operation and limitations
 
-For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to the exact HTTPS origin, and set `COOKIE_SECURE=true`. Keep the application port private. `/healthz` checks the process; `/readyz` checks PostgreSQL and Redis. Application logs go to stdout; Docker rotates them. Audit retention is independent of application log retention.
+For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to the exact HTTPS origin, and set `COOKIE_SECURE=true`. Keep the application port private. `/healthz` checks the process; `/readyz` checks PostgreSQL and Valkey. Application logs go to stdout; Docker rotates them. Audit retention is independent of application log retention.
 
 The application ignores forwarded client-IP headers by default. When running behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to the proxy address or network (comma-separated) so login rate limiting uses the original client IP. Trust only networks controlled by your deployment; for example, a local proxy can use `127.0.0.1/32`.
 
@@ -154,6 +154,6 @@ No production cloud action was performed during development. Real account valida
 
 ## Kubernetes
 
-A production-oriented Helm chart is available at [deploy/helm/netriun-nexus](deploy/helm/netriun-nexus). It deploys the application with non-root/read-only security settings and startup, liveness, and readiness probes. PostgreSQL and Redis are intentionally external dependencies. Render and inspect the chart before any cluster deployment; no Kubernetes resources are applied automatically.
+A production-oriented Helm chart is available at [deploy/helm/netriun-nexus](deploy/helm/netriun-nexus). It deploys the application with non-root/read-only security settings and startup, liveness, and readiness probes. PostgreSQL and Valkey are external by default; the local profile can create retained single-node dependencies. Render and inspect the chart before deployment.
 
 Implementation references: [AWS SDK for Go v2](https://docs.aws.amazon.com/sdk-for-go/), [Alibaba Cloud Go SDK V2](https://help.aliyun.com/en/sdk/developer-reference/use-alibaba-cloud-go-sdk-through-ide), [Alibaba OSS SDK for Go V2](https://github.com/aliyun/alibabacloud-oss-go-sdk-v2), [Azure Compute REST API](https://learn.microsoft.com/en-us/rest/api/compute/), [Google Compute Engine REST API](https://cloud.google.com/compute/docs/reference/rest/v1), [pgx](https://github.com/jackc/pgx/), [go-redis](https://redis.io/docs/latest/develop/clients/go/connect/).

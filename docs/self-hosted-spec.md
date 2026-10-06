@@ -44,46 +44,54 @@ Enterprise self-hosted licenses use a signed canonical JSON envelope. Ed25519 is
 the initial signature algorithm. The image contains only trusted public keys;
 Netriun keeps private signing keys outside the source repository and CI system.
 
-The signed payload contains at least:
+The signed claims use this version-1 shape (the complete normative schema is
+`api/enterprise/v1/license.schema.json`):
 
 ```json
 {
-  "schema_version": 1,
-  "product": "nexus",
   "license_id": "lic_example",
-  "customer": "Example Company",
+  "customer": {
+    "organization_id": "org_example",
+    "organization_name": "Example Company"
+  },
+  "product": "netriun-nexus",
+  "edition": "enterprise",
+  "deployment_mode": "self_hosted",
+  "entitlements": {
+    "features": ["advanced_sso", "cost_management"],
+    "limits": {
+      "workspaces": 10,
+      "human_identities": 250,
+      "cloud_accounts": 100,
+      "audit_retention_days": 365
+    }
+  },
   "issued_at": "2026-10-06T00:00:00Z",
   "not_before": "2026-10-06T00:00:00Z",
   "expires_at": "2027-10-06T00:00:00Z",
-  "maintenance_until": "2027-10-06T00:00:00Z",
-  "features": ["sso", "custom_access_roles", "billing_reports"],
-  "limits": {
-    "workspaces": 10,
-    "human_identities": 250,
-    "cloud_accounts": 100,
-    "audit_retention_days": 365
+  "installation_binding": {
+    "type": "installation_id",
+    "value": "ins_example"
   },
-  "installation_id": null,
+  "license_version": 1,
   "key_id": "nexus-2026-01"
 }
 ```
 
-The envelope includes the payload, algorithm, key ID, and signature. Canonical
-serialization is part of the format and must be covered by golden test vectors.
-Unknown keys are ignored for forward compatibility; unknown schema versions are
-rejected. Clock handling, grace dates, and status transitions are deterministic
-and tested.
+The envelope uses `license` plus an Ed25519 `signature`; `key_id` is inside the
+signed claims. The verifier signs RFC 8785/JCS bytes, rejects duplicate or
+unknown fields and unknown versions, and applies deterministic skew/grace
+tests. See [Enterprise licensing](enterprise-licensing.md).
 
 ## Storage and reload
 
 The Helm chart accepts the license through a Kubernetes Secret mounted read-only
-as a file. Docker Compose accepts the same file contract. The database stores
-only normalized status needed for audit/display; the signed document remains the
-source of truth. License replacement is atomic and can be picked up by an
-explicit reload or process restart in the first implementation.
+as a file. Host/Compose deployments accept the same file contract. The signed
+document remains the source of truth and is evaluated at process startup;
+replacement requires a controlled application restart in M4.
 
-The installation receives a generated stable installation ID. Binding a license
-to that ID is optional. Backup and restore procedures must preserve it.
+The installation receives a generated stable PostgreSQL installation ID.
+Enterprise licenses are bound to it. Backup and restore procedures preserve it.
 
 ## Failure behavior
 
@@ -95,8 +103,9 @@ to that ID is optional. Backup and restore procedures must preserve it.
   cause is exposed to administrators without logging the license document.
 - License parser or storage failure: application remains available in Community mode.
 
-Every status change and denied premium mutation is audited without storing
-license signatures, cloud secrets, or sensitive payloads.
+Denied limit mutations return stable machine-readable errors without logging
+license signatures, cloud secrets, or sensitive payloads. Persistent audit of
+license status transitions is a future administration enhancement.
 
 ## Distribution and supply chain
 
@@ -109,7 +118,5 @@ core plus private service infrastructure. Their integration contracts and
 version compatibility must be explicit before the first Enterprise build.
 
 The Open Source Work license and proprietary boundaries are defined in the
-root `LICENSE.md`. The public self-hosted beta remains blocked until the Redis
-runtime licensing decision, chart, image visibility, upgrade path,
-backup/restore, third-party notices, and entitlement tests meet the acceptance
-criteria in [the roadmap](roadmap.md).
+root `LICENSE.md`. Valkey resolved the former Redis licensing blocker. Remaining
+beta gates are tracked in [the roadmap](roadmap.md).

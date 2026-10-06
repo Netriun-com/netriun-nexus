@@ -16,14 +16,15 @@ The following current paths form the Open Source Work:
 - `internal/app/**`, except excluded brand assets described below
 - `internal/cloud/**`
 - `internal/entitlements/**`
+- `internal/licensing/**` and `internal/enterprise/**`
 - `internal/secure/**`
 - `scripts/**`
 - `deploy/**`
 - `.github/**`
 - `Dockerfile`, `Makefile`, `compose.yaml`, `go.mod`, and `go.sum`
 - `docs/openapi.json`
-- the boundary manifests in `core/`, `community/`, `providers/`, `api/`, and
-  `cli/`
+- `api/**`, plus the boundary manifests in `core/`, `community/`, `providers/`,
+  and `cli/`
 
 These paths map to the target architecture as documented in
 [`docs/licensing-architecture.md`](docs/licensing-architecture.md). A file in

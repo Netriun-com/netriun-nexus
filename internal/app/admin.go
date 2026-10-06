@@ -3,6 +3,7 @@
 package app
 
 import (
+	"github.com/netriun/nexus/internal/entitlements"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"strconv"
@@ -76,7 +77,8 @@ func (a *App) users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := current(r)
-	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT u.id,u.username,COALESCE(u.email,'') AS email,u.email_verified_at IS NOT NULL AS email_verified,u.role,u.is_owner,u.created_at,w.user_limit,(SELECT count(*) FROM users own WHERE own.workspace_id=u.workspace_id) AS workspace_user_count FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.workspace_id=$1 ORDER BY u.is_owner DESC,u.username) t", u.WorkspaceID)
+	allowed := a.Entitlements.Snapshot(r.Context(), u.WorkspaceID).Limits[entitlements.LimitHumanIdentities]
+	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT u.id,u.username,COALESCE(u.email,'') AS email,u.email_verified_at IS NOT NULL AS email_verified,u.role,u.is_owner,u.created_at,$2::integer AS user_limit,(SELECT count(*) FROM users own WHERE own.workspace_id=u.workspace_id) AS workspace_user_count FROM users u WHERE u.workspace_id=$1 ORDER BY u.is_owner DESC,u.username) t", u.WorkspaceID, allowed)
 }
 func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 	if !admin(w, r) {
@@ -121,10 +123,16 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 		}
 		defer tx.Rollback(r.Context())
 		if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock($1)", current(r).WorkspaceID); err == nil {
-			var count, limit int
-			err = tx.QueryRow(r.Context(), "SELECT count(*),max(w.user_limit) FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.workspace_id=$1", current(r).WorkspaceID).Scan(&count, &limit)
-			if err == nil && count >= limit {
-				problem(w, 409, "Community workspaces can add up to five team members")
+			var count int
+			err = tx.QueryRow(r.Context(), "SELECT count(*) FROM users WHERE workspace_id=$1", current(r).WorkspaceID).Scan(&count)
+			if err == nil {
+				if denial := a.Entitlements.RequireLimit(r.Context(), current(r).WorkspaceID, entitlements.LimitHumanIdentities, count+1); denial != nil {
+					entitlementProblem(w, denial)
+					return
+				}
+			}
+			if err != nil {
+				dbError(w, err)
 				return
 			}
 		}
@@ -280,6 +288,9 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Retention < 7 || in.Retention > 3650 {
 		problem(w, 400, "Retention must be between 7 and 3650 days")
+		return
+	}
+	if !a.requireLimit(w, r, entitlements.LimitAuditRetentionDays, in.Retention) {
 		return
 	}
 	_, err := a.DB.Exec(r.Context(), "UPDATE settings SET audit_retention_days=$1 WHERE workspace_id=$2", in.Retention, current(r).WorkspaceID)

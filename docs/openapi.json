@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "Multi-tenant workspace API with live provider refresh, database snapshots, Alibaba ECS security-group rule management, custom account access policies, local verified-email authentication, workspace-scoped OIDC/SAML SSO, and typed product entitlements. Lists return {data: [...]}; ordinary errors return {error: message}; entitlement denials also return a stable code and feature or limit metadata. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
@@ -220,6 +220,23 @@
           },
           "401": { "description": "Authentication required" },
           "503": { "description": "Dependency unavailable" }
+        }
+      }
+    },
+    "/installation": {
+      "get": {
+        "summary": "Read the stable installation identity and license status",
+        "responses": {
+          "200": {
+            "description": "Installation identity for offline license issuance; administrators only",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InstallationStatus" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Workspace administrator required" }
         }
       }
     },
@@ -2430,9 +2447,32 @@
               },
               "required": ["allowed", "used"]
             }
+          },
+          "license": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "license_id": { "type": "string" },
+              "key_id": { "type": "string" },
+              "expires_at": { "type": "string" },
+              "reason": { "type": "string" }
+            }
           }
         },
         "required": ["deployment_mode", "edition", "status", "features", "limits"]
+      },
+      "InstallationStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "installation_id": { "type": "string", "pattern": "^ins_[A-Za-z0-9_-]+$" },
+          "deployment_mode": { "type": "string", "enum": ["cloud", "self_hosted"] },
+          "edition": { "type": "string", "enum": ["community", "enterprise"] },
+          "license_status": { "type": "string", "enum": ["community", "licensed", "grace", "expired", "invalid"] },
+          "license": { "type": ["object", "null"] },
+          "enterprise_service_configured": { "type": "boolean" }
+        },
+        "required": ["installation_id", "deployment_mode", "edition", "license_status", "enterprise_service_configured"]
       }
     }
   }

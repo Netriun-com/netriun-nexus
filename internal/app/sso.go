@@ -29,6 +29,7 @@ import (
 	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlsp"
 	"github.com/jackc/pgx/v5"
+	"github.com/netriun/nexus/internal/entitlements"
 	"github.com/netriun/nexus/internal/secure"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
@@ -732,9 +733,11 @@ func (a *App) finishSSO(w http.ResponseWriter, r *http.Request, p identityProvid
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = tx.QueryRow(r.Context(), `SELECT u.id,u.workspace_id,w.name,u.username,u.email,u.role,u.is_owner,u.session_version FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.workspace_id=$1 AND lower(u.email)=$2`, p.WorkspaceID, identity.Email).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Email, &u.Role, &u.IsOwner, &u.Version)
 		if errors.Is(err, pgx.ErrNoRows) && p.JITProvisioning {
-			var count, limit int
-			if err = tx.QueryRow(r.Context(), "SELECT count(*),max(w.user_limit) FROM users existing JOIN workspaces w ON w.id=existing.workspace_id WHERE existing.workspace_id=$1", p.WorkspaceID).Scan(&count, &limit); err == nil && count >= limit {
-				err = errors.New("workspace user limit reached")
+			var count int
+			if err = tx.QueryRow(r.Context(), "SELECT count(*) FROM users WHERE workspace_id=$1", p.WorkspaceID).Scan(&count); err == nil {
+				if denial := a.Entitlements.RequireLimit(r.Context(), p.WorkspaceID, entitlements.LimitHumanIdentities, count+1); denial != nil {
+					err = denial
+				}
 			}
 			if err == nil {
 				u.WorkspaceID, u.Email, u.Role = p.WorkspaceID, identity.Email, "user"

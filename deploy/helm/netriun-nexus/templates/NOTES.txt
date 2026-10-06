@@ -3,12 +3,12 @@ Netriun Nexus has been installed.
 The chart expects Secret {{ .Values.existingSecret | quote }} to contain:
   DATABASE_URL, REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_EMAIL,
   ADMIN_PASSWORD, SMTP_USERNAME, SMTP_PASSWORD
-{{- if or .Values.postgresql.enabled .Values.redis.enabled }}
+{{- if or .Values.postgresql.enabled .Values.valkey.enabled }}
 The enabled local dependencies additionally require:
 {{- if .Values.postgresql.enabled }}
   POSTGRES_PASSWORD
 {{- end }}
-{{- if .Values.redis.enabled }}
+{{- if .Values.valkey.enabled }}
   REDIS_PASSWORD
 {{- end }}
 {{- end }}

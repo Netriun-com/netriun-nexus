@@ -13,9 +13,14 @@ func TestCommunityProviderContract(t *testing.T) {
 	if snapshot.DeploymentMode != DeploymentSelfHosted || snapshot.Edition != EditionCommunity || snapshot.Status != StatusCommunity {
 		t.Fatalf("unexpected community snapshot: %+v", snapshot)
 	}
-	for _, feature := range KnownFeatures {
+	for _, feature := range CoreFeatures {
+		if !snapshot.Features[feature] {
+			t.Fatalf("Core feature %q must remain enabled in Community", feature)
+		}
+	}
+	for _, feature := range EnterpriseFeatures {
 		if snapshot.Features[feature] {
-			t.Fatalf("community feature %q must be disabled", feature)
+			t.Fatalf("Enterprise feature %q must be disabled in Community", feature)
 		}
 	}
 	if snapshot.Limits[LimitHumanIdentities] != 6 || snapshot.Limits[LimitCloudAccounts] != 5 || snapshot.Limits[LimitAuditRetentionDays] != 30 {
@@ -26,7 +31,10 @@ func TestCommunityProviderContract(t *testing.T) {
 func TestFeatureAndLimitDecisionsAreProviderDecisions(t *testing.T) {
 	service := New(CommunityProvider{Mode: DeploymentCloud})
 	ctx := context.Background()
-	if denial := service.RequireFeature(ctx, 7, FeatureSSO); denial == nil || denial.Code != "feature_not_entitled" || denial.Feature != FeatureSSO {
+	if denial := service.RequireFeature(ctx, 7, FeatureSSO); denial != nil {
+		t.Fatalf("Core SSO must not require an Enterprise license: %v", denial)
+	}
+	if denial := service.RequireFeature(ctx, 7, FeatureAdvancedSSO); denial == nil || denial.Code != "feature_not_entitled" || denial.Feature != FeatureAdvancedSSO {
 		t.Fatalf("unexpected feature decision: %+v", denial)
 	}
 	if denial := service.RequireLimit(ctx, 7, LimitCloudAccounts, 5); denial != nil {

@@ -36,13 +36,18 @@ keys so that values may change without rewriting feature checks.
 | Cloud accounts | 5 | Licensed limit |
 | Inventory and core lifecycle actions | Included | Included |
 | Built-in Viewer, Operator, and Account Manager roles | Included | Included |
-| Custom access roles/policies | Not included | `custom_access_roles` |
-| OIDC and SAML SSO | Not included | `sso` |
-| Billing and custom cost reports | Not included | `billing_reports` |
-| Excel/PDF billing export | Not included | `billing_export` |
+| Custom access roles/policies | Included | Included |
+| Baseline OIDC/SAML, JIT, and group mapping | Included | Included |
+| Existing billing ingestion and basic reports | Included | Included |
+| Existing Excel/PDF billing export | Included | Included |
+| Advanced SSO | Not included | `advanced_sso` |
+| Identity governance | Not included | `identity_governance` |
+| Cost management | Not included | `cost_management` |
+| Custom report builder | Not included | `custom_report_builder` |
 | Scheduled reports | Not included | `scheduled_reports` |
+| Policy automation | Not included | `policy_automation` |
 | Audit retention | 30 days | Licensed limit |
-| HA deployment guidance | Not included | `ha_guidance` |
+| HA operations | Not included | `ha_operations` |
 
 Stable limit keys are `workspaces`, `human_identities`, `cloud_accounts`, and
 `audit_retention_days`. Stable feature keys must be used by the backend, UI,
@@ -77,8 +82,8 @@ model must not encode provider-specific commercial assumptions.
 - The Enterprise commercial license, documentation license, trademark policy,
   and contributor agreement. The Open Source Work is now AGPL-3.0-only with
   explicit Enterprise and Cloud exclusions.
-- The Redis server version/license used by the Community distribution; see the
-  [dependency license audit](dependency-license-audit.md).
+- The Redis licensing blocker is resolved by the pinned Valkey runtime; see the
+  [Valkey migration record](redis-licensing.md).
 - Final commercial prices and Enterprise limit values.
 - The customer/license issuing workflow and support terms.
 

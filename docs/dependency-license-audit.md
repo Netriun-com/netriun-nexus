@@ -7,11 +7,11 @@ review, not legal advice.
 
 ## Result
 
-The two shipped commands currently link **55 external Go modules**:
+The two shipped commands currently link **56 external Go modules**:
 
 | Detected license family | Module count | AGPL-3.0-only compatibility result |
 | --- | ---: | --- |
-| Apache-2.0 | 30 | No incompatibility identified; preserve license and NOTICE material. |
+| Apache-2.0 | 31 | No incompatibility identified; preserve license and NOTICE material. |
 | BSD-2-Clause | 4 | No incompatibility identified; preserve copyright/license text. |
 | BSD-3-Clause | 10 | No incompatibility identified; preserve copyright/license text. |
 | MIT-style | 11 | No incompatibility identified; preserve copyright/license text. |
@@ -50,6 +50,7 @@ license conditions.
 - `github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.2`
 - `github.com/aws/smithy-go v1.28.1`
 - `github.com/coreos/go-oidc/v3 v3.21.0`
+- `github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467`
 - `github.com/go-jose/go-jose/v4 v4.1.4`
 - `github.com/jonboulle/clockwork v0.5.0`
 - `github.com/mattermost/xml-roundtrip-validator v0.1.0`
@@ -102,16 +103,13 @@ license conditions.
 | Nexus runtime | pinned distroless Debian 12 digest | Base project is Apache-2.0; Debian package notices remain component-specific. Release SBOM/license bundle still required. |
 | Go builder | `golang:1.26-alpine` | Build-only, floating tag. Pin digest and capture Alpine package licenses for reproducible release builds. |
 | PostgreSQL | `postgres:17-alpine` | PostgreSQL License is permissive/compatible, but the tag is floating and Alpine components require their own notices. |
-| Redis server | `redis:7-alpine` | **Decision blocker.** The resolved local and cluster image is Redis 7.4.11. Redis 7.4.x is offered under RSALv2 or SSPLv1, neither an OSI-approved Open Source license. It is a separate service rather than linked Go code, but shipping this default conflicts with the stated “all Community components Open Source” objective and needs an explicit product/legal choice. |
+| Valkey server | `valkey/valkey:8.1.10-alpine@sha256:326271...` | BSD-3-Clause, protocol-compatible with the command subset used by Nexus, pinned to the deployed linux/amd64 manifest digest. |
+| Legacy Redis rollback | retained Redis 7.4.11 PVC only | No longer an active Community runtime. The old PV/PVC is retained temporarily for rollback and must not be distributed as the default dependency. |
 | go-redis client | `github.com/redis/go-redis/v9 v9.22.0` | BSD-2-Clause and compatible; this is distinct from the Redis server license. |
 | Trivy | pinned `ghcr.io/aquasecurity/trivy:0.75.0` digest | Apache-2.0 tooling used for scanning, not linked into Nexus. |
 
-No Redis reference was changed in M3 because the instruction was to report
-license concerns before removal or replacement. Viable decisions include
-pinning Redis 7.2.x after reviewing its security/support implications, moving
-to Redis 8 and deliberately selecting its AGPLv3 option, or validating a
-compatible alternative through application tests. This document does not pick
-one.
+M4 resolved the Redis server blocker by migrating the default local and Helm
+runtime to Valkey 8.1.10. See `redis-licensing.md` for evidence and rollback.
 
 ## First-party and copied/generated code review
 
