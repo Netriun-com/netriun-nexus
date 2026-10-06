@@ -3,6 +3,7 @@
 !.env.example
 /bin/
 /tmp/
+/.dev/
 coverage.out
 *.db
 *.db-*
