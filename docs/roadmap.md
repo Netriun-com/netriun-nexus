@@ -10,9 +10,9 @@ security or data-safety prerequisite.
 - [x] Move the canonical image name to `ghcr.io/netriun-com/netriun-nexus`.
 - [x] Add race/integration CI, exact-artifact vulnerability scanning, and signing.
 - [x] Run the image as an unprivileged user on a minimal runtime base.
-- [ ] Make the GHCR package anonymously pullable.
+- [x] Make the GHCR package anonymously pullable.
 - [x] Protect default branches against force-push and deletion.
-- [ ] Publish and deploy the first signed organization release.
+- [x] Publish and deploy the first signed organization release (`v0.1.27`).
 
 ## M1 — Product contract
 
