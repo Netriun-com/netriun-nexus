@@ -1,0 +1,16 @@
+# Trivy is pinned by version and digest so CI scans the exact tool reviewed here.
+# It receives a saved image read-only and never gets access to the Docker socket.
+name: nexus-trivy
+services:
+  trivy:
+    image: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges"]
+    tmpfs: [/tmp]
+    environment:
+      TRIVY_CACHE_DIR: /cache
+      HOME: /tmp
+    volumes:
+      - ${IMAGES_DIR:?}:/images:ro
+      - ${TRIVY_CACHE:?}:/cache

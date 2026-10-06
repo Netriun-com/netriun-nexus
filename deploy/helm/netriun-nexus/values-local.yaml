@@ -1,8 +1,8 @@
 fullnameOverride: nexus
 
 image:
-  repository: sahiiib/netriun-nexus
-  tag: "0.1.26"
+  repository: ghcr.io/netriun-com/netriun-nexus
+  tag: "0.1.27"
   pullPolicy: IfNotPresent
 
 service:
