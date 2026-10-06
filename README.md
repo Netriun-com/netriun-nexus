@@ -2,6 +2,14 @@
 
 Netriun Nexus is a multi-tenant control plane for orchestrating multi-cloud operations, approvals, access, and live infrastructure health from one place. It includes PostgreSQL, Redis, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
 
+Nexus is evolving into a single-image product delivered as Netriun Cloud, a
+free self-hosted Community edition, and a licensed self-hosted Enterprise
+edition. The approved behavior and implementation sequence are documented in
+the [product definition](docs/product-definition.md), [self-hosted specification](docs/self-hosted-spec.md),
+[staging specification](docs/staging.md), and [delivery roadmap](docs/roadmap.md).
+The repository remains `UNLICENSED` until a redistribution license is selected;
+source availability alone does not grant permission to redistribute it.
+
 ## Run locally
 
 Requirements: Docker Compose and OpenSSL.
