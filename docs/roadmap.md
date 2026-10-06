@@ -11,7 +11,7 @@ security or data-safety prerequisite.
 - [x] Add race/integration CI, exact-artifact vulnerability scanning, and signing.
 - [x] Run the image as an unprivileged user on a minimal runtime base.
 - [ ] Make the GHCR package anonymously pullable.
-- [ ] Protect default branches against force-push and deletion.
+- [x] Protect default branches against force-push and deletion.
 - [ ] Publish and deploy the first signed organization release.
 
 ## M1 — Product contract
@@ -88,4 +88,3 @@ Exit: all checks in [the staging specification](staging.md) pass.
 - [ ] Open a documented feedback and vulnerability-reporting path.
 
 Exit: the Community self-hosted beta is publicly installable and supportable.
-
