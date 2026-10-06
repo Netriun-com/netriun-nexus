@@ -90,7 +90,3 @@ jobs:
           cosign sign --yes "$digest"
           cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/images.yml@${{ github.ref }}" "$digest" >/dev/null
           echo "Published and signed \`$digest\` (${tags[*]})" >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep the Community image publicly pullable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh api --method PATCH /orgs/netriun-com/packages/container/netriun-nexus -f visibility=public
