@@ -26,11 +26,11 @@ Exit: product and legal decisions permit public self-hosted distribution.
 
 ## M2 — Entitlement foundation
 
-- [ ] Add typed feature, limit, edition, and status models.
-- [ ] Implement the Community entitlement provider.
-- [ ] Add backend decision helpers and stable API error responses.
-- [ ] Add unit and integration tests that prove RBAC and entitlement are independent.
-- [ ] Expose administrator-safe entitlement status through the API.
+- [x] Add typed feature, limit, edition, and status models.
+- [x] Implement the Community entitlement provider.
+- [x] Add backend decision helpers and stable API error responses.
+- [x] Add unit and integration tests that prove RBAC and entitlement are independent.
+- [x] Expose administrator-safe entitlement status through the API.
 
 Exit: Community behavior is centrally enforced without license parsing.
 

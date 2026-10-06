@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.27"
+  tag: "0.1.28"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -51,6 +51,7 @@ ingress:
   tls: []
 
 config:
+  deploymentMode: self_hosted
   appOrigin: https://nexus.netriun.com
   cookieSecure: "true"
   trustedProxyCidrs: ""

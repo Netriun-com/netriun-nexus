@@ -50,6 +50,7 @@ func TestIntegration(t *testing.T) {
 	t.Setenv("SMTP_FROM_ADDRESS", "sender@example.com")
 	t.Setenv("SMTP_FROM_NAME", "Netriun Nexus")
 	t.Setenv("COOKIE_SECURE", "false")
+	t.Setenv("DEPLOYMENT_MODE", "self_hosted")
 	t.Setenv("APP_ORIGIN", "http://localhost:8080")
 	ctx := context.Background()
 	a, err := New(ctx)
@@ -136,6 +137,7 @@ func TestIntegration(t *testing.T) {
 		return v.ID
 	}
 	request("GET", "/api/v1/instances", "", nil, 401)
+	request("GET", "/api/v1/entitlements", "", nil, 401)
 	request("POST", "/api/v1/accounts/test", "", map[string]string{"provider": "aws"}, 401)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "testadmin@example.com", "password": "wrong"}, 401)
 	adminToken := login("testadmin@example.com", "Test-admin-password1!")
@@ -238,6 +240,13 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("cross-workspace audit data leaked")
 	}
 	viewer := login("viewer@example.com", "Viewer-password1!")
+	adminEntitlements := request("GET", "/api/v1/entitlements", adminToken, nil, 200)
+	viewerEntitlements := request("GET", "/api/v1/entitlements", viewer, nil, 200)
+	for _, response := range []*httptest.ResponseRecorder{adminEntitlements, viewerEntitlements} {
+		if !strings.Contains(response.Body.String(), `"deployment_mode":"self_hosted"`) || !strings.Contains(response.Body.String(), `"edition":"community"`) || !strings.Contains(response.Body.String(), `"sso":false`) || !strings.Contains(response.Body.String(), `"cloud_accounts":{"allowed":5`) {
+			t.Fatalf("unexpected Community entitlement status: %s", response.Body.String())
+		}
+	}
 	w := request("GET", "/api/v1/accounts", viewer, nil, 200)
 	if strings.Contains(w.Body.String(), "secret") || strings.Contains(w.Body.String(), "credentials") || strings.Contains(w.Body.String(), "Account B") || strings.Contains(w.Body.String(), "Alibaba Production") {
 		t.Fatal("account data leakage")
@@ -733,7 +742,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("cloud policy and reporting documentation is missing")
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.27"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Reports", "Resource &amp; billing", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.28"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}

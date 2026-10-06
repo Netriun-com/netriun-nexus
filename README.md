@@ -23,6 +23,12 @@ Open http://localhost:8080. Sign in as `admin` with `ADMIN_PASSWORD` from `.env`
 
 The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a compute service shows its latest database snapshot immediately and queues a live provider refresh in the background.
 
+`DEPLOYMENT_MODE` is explicit and accepts `self_hosted` or `cloud`; local,
+Compose, and the bundled Helm values default to `self_hosted`. Authenticated
+clients can read the sanitized edition, feature decisions, and current
+workspace limit usage from `GET /api/v1/entitlements`. Product limits and
+premium capability decisions are enforced separately from workspace RBAC.
+
 The sidebar keeps cloud scope explicit: select one active provider, then select one or more accounts from that provider. Cloud services are loaded for the active provider and grouped by capability. Workspace administration and product documentation—including the API reference—have separate navigation sections. Multi-account inventory API calls use a comma-separated `account_ids` query value; selected IDs must be accessible and belong to the same provider.
 
 ```sh

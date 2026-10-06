@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/netriun/nexus/internal/entitlements"
 )
 
 type runtimeConfig struct {
@@ -22,10 +24,20 @@ type runtimeConfig struct {
 	smtpPassword    string
 	smtpFromAddress string
 	smtpFromName    string
+	deploymentMode  entitlements.DeploymentMode
 }
 
 func loadRuntimeConfig() (runtimeConfig, error) {
 	var c runtimeConfig
+	mode := strings.TrimSpace(os.Getenv("DEPLOYMENT_MODE"))
+	if mode == "" {
+		mode = string(entitlements.DeploymentSelfHosted)
+	}
+	var err error
+	c.deploymentMode, err = entitlements.ParseDeploymentMode(mode)
+	if err != nil {
+		return c, err
+	}
 	c.databaseURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	c.redisURL = strings.TrimSpace(os.Getenv("REDIS_URL"))
 	c.encryptionKey = strings.TrimSpace(os.Getenv("ENCRYPTION_KEY"))

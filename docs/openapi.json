@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.10.0",
-    "description": "Multi-tenant workspace API with live provider refresh, database snapshots, Alibaba ECS security-group rule management, custom account access policies, local verified-email authentication, and workspace-scoped OIDC/SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
+    "version": "1.11.0",
+    "description": "Multi-tenant workspace API with live provider refresh, database snapshots, Alibaba ECS security-group rule management, custom account access policies, local verified-email authentication, workspace-scoped OIDC/SAML SSO, and typed product entitlements. Lists return {data: [...]}; ordinary errors return {error: message}; entitlement denials also return a stable code and feature or limit metadata. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
     {
@@ -203,6 +203,23 @@
           "503": {
             "description": "Dependency unavailable"
           }
+        }
+      }
+    },
+    "/entitlements": {
+      "get": {
+        "summary": "Current deployment mode, edition, feature decisions, and workspace limit usage",
+        "responses": {
+          "200": {
+            "description": "Sanitized entitlement status for the authenticated workspace",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntitlementStatus" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" },
+          "503": { "description": "Dependency unavailable" }
         }
       }
     },
@@ -2390,6 +2407,32 @@
         "required": [
           "audit_retention_days"
         ]
+      },
+      "EntitlementStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deployment_mode": { "type": "string", "enum": ["cloud", "self_hosted"] },
+          "edition": { "type": "string", "enum": ["community", "enterprise"] },
+          "status": { "type": "string", "enum": ["community", "licensed", "grace", "expired", "invalid"] },
+          "features": {
+            "type": "object",
+            "additionalProperties": { "type": "boolean" }
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowed": { "type": "integer", "minimum": 0 },
+                "used": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["allowed", "used"]
+            }
+          }
+        },
+        "required": ["deployment_mode", "edition", "status", "features", "limits"]
       }
     }
   }

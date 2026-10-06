@@ -43,6 +43,7 @@ func TestParseTrustedProxies(t *testing.T) {
 }
 
 func TestRuntimeConfigValidation(t *testing.T) {
+	t.Setenv("DEPLOYMENT_MODE", "self_hosted")
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("REDIS_URL", "redis://example")
 	t.Setenv("ENCRYPTION_KEY", "key-is-validated-by-the-vault")
@@ -59,6 +60,14 @@ func TestRuntimeConfigValidation(t *testing.T) {
 	if err != nil || cfg.origin != "http://localhost:8080" || cfg.secureCookies {
 		t.Fatalf("valid local config rejected: cfg=%+v err=%v", cfg, err)
 	}
+	if cfg.deploymentMode != "self_hosted" {
+		t.Fatalf("unexpected deployment mode: %q", cfg.deploymentMode)
+	}
+	t.Setenv("DEPLOYMENT_MODE", "invalid")
+	if _, err = loadRuntimeConfig(); err == nil {
+		t.Fatal("invalid deployment mode accepted")
+	}
+	t.Setenv("DEPLOYMENT_MODE", "self_hosted")
 
 	t.Setenv("APP_ORIGIN", "https://nexus.example.com")
 	if _, err = loadRuntimeConfig(); err == nil {
