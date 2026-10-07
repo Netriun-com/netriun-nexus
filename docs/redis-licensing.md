@@ -3,8 +3,10 @@
 Status: Valkey migration completed on 2026-10-06; legacy Redis storage retained
 pending explicit cleanup approval.
 
-As of M5, the active Valkey PVC has remained healthy through release `v0.1.34`
-and the legacy Redis PVC remains bound and unused. Cleanup is safe only after
+As of the M5 deployment, the active Valkey PVC remains healthy on release
+`v0.1.35` (Helm revision 35) and the legacy Redis PVC remains bound and unused.
+PostgreSQL, Valkey and legacy Redis PVCs were all `Bound` after rollout; Valkey
+reported `PONG` and version 8.1.10. Cleanup is safe only after
 the owner closes the rollback window, confirms no rollback to the Redis-based
 Helm revision is required, preserves or intentionally expires the verified RDB
 backup, and explicitly approves deletion. No cleanup is automatic.
