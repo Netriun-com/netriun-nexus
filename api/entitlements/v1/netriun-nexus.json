@@ -1,0 +1,21 @@
+{
+  "manifest_version": 1,
+  "product": "netriun-nexus",
+  "definition_version": 1,
+  "license_schema_version": 1,
+  "features": [
+    {"key": "advanced_sso"},
+    {"key": "identity_governance"},
+    {"key": "cost_management"},
+    {"key": "custom_report_builder"},
+    {"key": "scheduled_reports"},
+    {"key": "policy_automation"},
+    {"key": "ha_operations"}
+  ],
+  "limits": [
+    {"key": "workspaces", "minimum": 0},
+    {"key": "human_identities", "minimum": 0},
+    {"key": "cloud_accounts", "minimum": 0},
+    {"key": "audit_retention_days", "minimum": 0}
+  ]
+}
