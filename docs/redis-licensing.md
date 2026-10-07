@@ -3,6 +3,12 @@
 Status: Valkey migration completed on 2026-10-06; legacy Redis storage retained
 pending explicit cleanup approval.
 
+As of M5, the active Valkey PVC has remained healthy through release `v0.1.34`
+and the legacy Redis PVC remains bound and unused. Cleanup is safe only after
+the owner closes the rollback window, confirms no rollback to the Redis-based
+Helm revision is required, preserves or intentionally expires the verified RDB
+backup, and explicitly approves deletion. No cleanup is automatic.
+
 ## Decision
 
 The Community distribution uses Valkey 8.1.10 instead of Redis 7.4.11.

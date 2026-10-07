@@ -71,6 +71,8 @@ responses fail only that Enterprise operation with a retryable service error.
 They do not make Core unready. No generic remote operation may be used to
 bypass the enumerated capability allowlist.
 
-Mutual authentication, request signing, replay protection, and concrete
-capability endpoints are deferred until the first proprietary feature service
-is implemented; they are release blockers for that service, not for Community.
+The M5 [service-authentication recommendation](enterprise-service-authentication.md)
+selects mTLS workload identities, ClusterIP-only exposure and NetworkPolicy as
+defense in depth, subject to owner approval before implementation. Mutual
+authentication, authorization and replay/idempotency controls are release
+blockers for a proprietary feature service, not for Community.

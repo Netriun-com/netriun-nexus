@@ -203,13 +203,66 @@ func TestMalformedInputsFailSafeAndCommunityFallback(t *testing.T) {
 func TestKeyringValidation(t *testing.T) {
 	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
 	encoded := base64.RawURLEncoding.EncodeToString(publicKey)
-	data := []byte(`{"version":1,"keys":[{"key_id":"old","algorithm":"Ed25519","public_key":"` + encoded + `","state":"retired"}]}`)
+	data := []byte(`{"version":1,"keys":[{"key_id":"old","algorithm":"Ed25519","public_key":"` + encoded + `","state":"retired","created_at":"2026-01-01T00:00:00Z","usage":"license_signing"}]}`)
 	ring, err := ParseKeyring(data)
 	if err != nil || ring.keys["old"].state != KeyRetired {
 		t.Fatalf("valid keyring rejected: ring=%+v err=%v", ring, err)
 	}
 	if _, err = ParseKeyring([]byte(`{"version":1,"keys":[{"key_id":"x","algorithm":"Ed25519","public_key":"bad","state":"active"}]}`)); err == nil {
 		t.Fatal("invalid public key accepted")
+	}
+}
+
+func TestKeyRotationKeepsRetiredValidAndRevocationWins(t *testing.T) {
+	oldPublic, oldPrivate, _ := ed25519.GenerateKey(rand.Reader)
+	newPublic, newPrivate, _ := ed25519.GenerateKey(rand.Reader)
+	ring := Keyring{version: 1, keys: map[string]keyRecord{
+		"production-2025-01": {publicKey: oldPublic, state: KeyRetired},
+		"production-2026-01": {publicKey: newPublic, state: KeyActive},
+	}}
+	verifier := Verifier{Keys: ring, Now: func() time.Time { return fixedNow }, DeploymentMode: entitlements.DeploymentSelfHosted, InstallationID: "ins_test_001"}
+	oldClaims := testClaims()
+	oldClaims.KeyID = "production-2025-01"
+	if result := verifier.Verify(signForTest(t, oldClaims, oldPrivate)); result.Status != entitlements.StatusLicensed {
+		t.Fatalf("retired signing key stopped verifying an existing license: %+v", result)
+	}
+	newClaims := testClaims()
+	newClaims.KeyID = "production-2026-01"
+	if result := verifier.Verify(signForTest(t, newClaims, newPrivate)); result.Status != entitlements.StatusLicensed {
+		t.Fatalf("active signing key rejected: %+v", result)
+	}
+	ring.keys["production-2025-01"] = keyRecord{publicKey: oldPublic, state: KeyRevoked}
+	if result := verifier.Verify(signForTest(t, oldClaims, oldPrivate)); result.Reason != "revoked_key" {
+		t.Fatalf("revoked key remained valid: %+v", result)
+	}
+}
+
+func TestReplayScopeClockRollbackAndRuntimeExpiry(t *testing.T) {
+	verifier, privateKey := testVerifier(t, KeyActive)
+	document := signForTest(t, testClaims(), privateKey)
+	if first, replay := verifier.Verify(document), verifier.Verify(document); first.Status != entitlements.StatusLicensed || replay.Status != entitlements.StatusLicensed {
+		t.Fatalf("a static offline license must remain reusable by its bound installation: first=%+v replay=%+v", first, replay)
+	}
+	clone := verifier
+	clone.InstallationID = "ins_unrelated_clone"
+	if result := clone.Verify(document); result.Reason != "invalid_installation_binding" {
+		t.Fatalf("license replay to another installation succeeded: %+v", result)
+	}
+
+	now := fixedNow
+	verifier.Now = func() time.Time { return now }
+	verifier.TimeGuard = NewTimeGuard(fixedNow)
+	provider := Provider{Community: entitlements.CommunityProvider{Mode: entitlements.DeploymentSelfHosted}, License: document, Verifier: &verifier}
+	if snapshot := provider.Snapshot(context.Background(), 1); snapshot.Status != entitlements.StatusLicensed {
+		t.Fatalf("initial dynamic evaluation failed: %+v", snapshot)
+	}
+	now = fixedNow.Add(16 * 24 * time.Hour)
+	if snapshot := provider.Snapshot(context.Background(), 1); snapshot.Status != entitlements.StatusExpired {
+		t.Fatalf("license did not expire while Core remained running: %+v", snapshot)
+	}
+	now = fixedNow.Add(-time.Hour)
+	if snapshot := provider.Snapshot(context.Background(), 1); snapshot.Status != entitlements.StatusInvalid || snapshot.License.Reason != "clock_rollback_detected" {
+		t.Fatalf("clock rollback resurrected Enterprise capabilities: %+v", snapshot)
 	}
 }
 

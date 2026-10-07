@@ -18,6 +18,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -33,6 +34,7 @@ const (
 	DefaultGracePeriod  = 14 * 24 * time.Hour
 	SignatureAlgorithm  = "Ed25519"
 	BindingInstallation = "installation_id"
+	KeyUsageSigning     = "license_signing"
 )
 
 type Customer struct {
@@ -88,6 +90,8 @@ type TrustedKey struct {
 	Algorithm string   `json:"algorithm"`
 	PublicKey string   `json:"public_key"`
 	State     KeyState `json:"state"`
+	CreatedAt string   `json:"created_at"`
+	Usage     string   `json:"usage"`
 }
 
 type keyringDocument struct {
@@ -126,7 +130,8 @@ func ParseKeyring(data []byte) (Keyring, error) {
 	}
 	ring := Keyring{version: document.Version, keys: make(map[string]keyRecord, len(document.Keys))}
 	for _, key := range document.Keys {
-		if !validIdentifier(key.ID) || key.Algorithm != SignatureAlgorithm || (key.State != KeyActive && key.State != KeyRetired && key.State != KeyRevoked) {
+		_, createdAtErr := parseTimestamp(key.CreatedAt)
+		if !validIdentifier(key.ID) || key.Algorithm != SignatureAlgorithm || key.Usage != KeyUsageSigning || createdAtErr != nil || (key.State != KeyActive && key.State != KeyRetired && key.State != KeyRevoked) {
 			return Keyring{}, errors.New("invalid public key metadata")
 		}
 		if _, exists := ring.keys[key.ID]; exists {
@@ -155,6 +160,45 @@ type Verifier struct {
 	Product        string
 	DeploymentMode entitlements.DeploymentMode
 	InstallationID string
+	TimeGuard      *TimeGuard
+}
+
+// TimeGuard prevents a running process from moving its license clock
+// backwards. Its initial floor is loaded from persistent installation state.
+// It is not a defense against an administrator rolling back both the database
+// and the host clock; that remains an operational and contractual boundary.
+type TimeGuard struct {
+	mu        sync.Mutex
+	highWater time.Time
+}
+
+func NewTimeGuard(initial time.Time) *TimeGuard {
+	return &TimeGuard{highWater: initial.UTC()}
+}
+
+func (g *TimeGuard) Observe(now time.Time, skew time.Duration) (time.Time, bool) {
+	if g == nil {
+		return now.UTC(), false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now = now.UTC()
+	if !g.highWater.IsZero() && now.Add(skew).Before(g.highWater) {
+		return g.highWater, true
+	}
+	if now.After(g.highWater) {
+		g.highWater = now
+	}
+	return g.highWater, false
+}
+
+func (g *TimeGuard) HighWater() time.Time {
+	if g == nil {
+		return time.Time{}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.highWater
 }
 
 func (v Verifier) Verify(data []byte) (result Evaluation) {
@@ -208,7 +252,11 @@ func (v Verifier) Verify(data []byte) (result Evaluation) {
 		result.Reason = reason
 		return result
 	}
-	now := v.now().UTC()
+	now, rollback := v.TimeGuard.Observe(v.now(), v.skew())
+	if rollback {
+		result.Reason = "clock_rollback_detected"
+		return result
+	}
 	issuedAt, _ := parseTimestamp(claims.IssuedAt)
 	notBefore, _ := parseTimestamp(claims.NotBefore)
 	expiresAt, _ := parseTimestamp(claims.ExpiresAt)
@@ -459,24 +507,42 @@ func matchingDelimiter(open json.Delim) json.Delim {
 }
 
 func Load(path string, verifier Verifier) Evaluation {
+	_, evaluation := LoadDocument(path, verifier)
+	return evaluation
+}
+
+// LoadDocument reads a license once for subsequent offline re-evaluation.
+// Re-evaluation lets expiry and clock rollback take effect without restarting
+// Core; replacing the file still requires a controlled process restart.
+func LoadDocument(path string, verifier Verifier) ([]byte, Evaluation) {
 	if strings.TrimSpace(path) == "" {
-		return Evaluation{Status: entitlements.StatusCommunity}
+		return nil, Evaluation{Status: entitlements.StatusCommunity}
 	}
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
-		return Evaluation{Status: entitlements.StatusInvalid, Reason: "license_unreadable"}
+		return nil, Evaluation{Status: entitlements.StatusInvalid, Reason: "license_unreadable"}
 	}
-	return verifier.Verify(data)
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, MaxLicenseBytes+1))
+	if err != nil {
+		return nil, Evaluation{Status: entitlements.StatusInvalid, Reason: "license_unreadable"}
+	}
+	return data, verifier.Verify(data)
 }
 
 type Provider struct {
 	Community  entitlements.CommunityProvider
 	Evaluation Evaluation
+	License    []byte
+	Verifier   *Verifier
 }
 
 func (p Provider) Snapshot(ctx context.Context, workspaceID int64) entitlements.Snapshot {
 	snapshot := p.Community.Snapshot(ctx, workspaceID)
 	evaluation := p.Evaluation
+	if p.Verifier != nil && len(p.License) != 0 {
+		evaluation = p.Verifier.Verify(p.License)
+	}
 	if evaluation.Status == entitlements.StatusCommunity {
 		return snapshot
 	}

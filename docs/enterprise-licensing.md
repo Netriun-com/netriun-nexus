@@ -1,7 +1,7 @@
 # Offline Enterprise licensing
 
-Status: M4 Core verifier implemented; production public key ceremony and the
-private issuer remain outside this public repository.
+Status: M5 trust hardening implemented in Core; the production ceremony is
+specified but blocked on an approved offline hardware custody environment.
 
 ## Trust model
 
@@ -10,8 +10,8 @@ Canonicalization Scheme (JCS) and Ed25519. It performs no network call. The
 private signing key must never enter this repository, a Nexus image, a Core
 binary, or Community CI. Core embeds only a versioned public keyring.
 
-The embedded M4 keyring is intentionally empty until Netriun supplies a
-production public key from an approved offline key ceremony. Tests generate
+The embedded keyring is intentionally empty until Netriun completes the
+approved [production key ceremony](production-key-ceremony.md). Tests generate
 ephemeral Ed25519 keys in memory. Core has no production signing function.
 
 ## Envelope and signed claims
@@ -58,7 +58,8 @@ Unknown features, limits, license versions, algorithms, and keys fail closed.
 ## Key rotation and revocation
 
 Every license signs `key_id`. The embedded keyring has its own version and each
-Ed25519 public key is `active`, `retired`, or `revoked`:
+Ed25519 public key records an immutable ID, algorithm, creation timestamp,
+`license_signing` usage and an `active`, `retired`, or `revoked` state:
 
 - active keys verify current licenses;
 - retired keys continue verifying already issued licenses;
@@ -74,6 +75,9 @@ offline proprietary issuer and operating procedure.
 The verifier allows five minutes of clock skew. After `expires_at`, the license
 enters a 14-day grace period and its licensed features continue to operate.
 After grace, or for an invalid license, Core falls back to Community behavior.
+Core re-evaluates the loaded document during entitlement checks, so a running
+process enters grace/expiry without a restart. A persistent installation time
+floor plus an in-process high-water mark rejects material clock rollback.
 
 | State | Enterprise capabilities | Core/data behavior |
 | --- | --- | --- |
@@ -101,7 +105,12 @@ stable and available to authenticated workspace administrators at
   row, or independent active clone.
 
 There is no clone-detection bypass. Contractual/operational controls must
-prevent concurrent use of one identity as multiple installations.
+prevent concurrent use of one identity as multiple installations. See the
+[clone and disaster-recovery matrix](installation-binding-dr.md).
+
+The issuer boundary and commands are specified in the
+[offline issuer architecture](license-issuer-architecture.md). No customer
+license or production private key exists in this repository.
 
 ## Configuration
 

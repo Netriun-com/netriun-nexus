@@ -43,6 +43,7 @@ type App struct {
 	Entitlements               *entitlements.Service
 	Enterprise                 *enterprise.Client
 	InstallationID             string
+	licenseClock               *licensing.TimeGuard
 	backgroundCtx              context.Context
 	backgroundStop             context.CancelFunc
 	backgroundWG               sync.WaitGroup
@@ -124,18 +125,29 @@ func New(ctx context.Context) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	evaluation := licensing.Load(cfg.enterpriseLicensePath, licensing.Verifier{
+	timeFloor, err := a.advanceLicenseTimeFloor(ctx)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	a.licenseClock = licensing.NewTimeGuard(timeFloor)
+	verifier := licensing.Verifier{
 		Keys:           keyring,
 		DeploymentMode: cfg.deploymentMode,
 		InstallationID: a.InstallationID,
-	})
+		TimeGuard:      a.licenseClock,
+	}
+	licenseDocument, evaluation := licensing.LoadDocument(cfg.enterpriseLicensePath, verifier)
 	a.Entitlements = entitlements.New(licensing.Provider{
 		Community:  entitlements.CommunityProvider{Mode: cfg.deploymentMode},
 		Evaluation: evaluation,
+		License:    licenseDocument,
+		Verifier:   &verifier,
 	})
 	if evaluation.Status != entitlements.StatusCommunity {
 		slog.Info("Enterprise license evaluated", "status", evaluation.Status, "reason", evaluation.Reason)
 	}
+	a.startLicenseClockPersistence()
 	if err = a.bootstrap(ctx); err != nil {
 		a.Close()
 		return nil, err

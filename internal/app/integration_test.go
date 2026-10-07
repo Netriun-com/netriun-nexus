@@ -69,6 +69,10 @@ func TestIntegration(t *testing.T) {
 	if repeated, repeatErr := a.ensureInstallationID(ctx); repeatErr != nil || repeated != firstInstallationID {
 		t.Fatalf("installation ID changed across initialization: first=%q repeated=%q err=%v", firstInstallationID, repeated, repeatErr)
 	}
+	var licenseTimeFloor time.Time
+	if err = a.DB.QueryRow(ctx, "SELECT license_time_floor FROM installation_identity WHERE singleton=true").Scan(&licenseTimeFloor); err != nil || licenseTimeFloor.IsZero() {
+		t.Fatalf("persistent license time floor was not initialized: floor=%v err=%v", licenseTimeFloor, err)
+	}
 	var snapshotTable, legacyInterval bool
 	if err = a.DB.QueryRow(ctx, "SELECT to_regclass('service_snapshots') IS NOT NULL").Scan(&snapshotTable); err != nil || !snapshotTable {
 		t.Fatal("live inventory snapshot migration was not applied")

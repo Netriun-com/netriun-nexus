@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netriun.com/schemas/nexus-enterprise-keyring-v1.json",
+  "title": "Netriun Nexus Enterprise public signing keyring v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "keys"],
+  "properties": {
+    "version": {"const": 1},
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key_id", "algorithm", "public_key", "state", "created_at", "usage"],
+        "properties": {
+          "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+          "algorithm": {"const": "Ed25519"},
+          "public_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"},
+          "state": {"enum": ["active", "retired", "revoked"]},
+          "created_at": {"type": "string", "format": "date-time"},
+          "usage": {"const": "license_signing"}
+        }
+      }
+    }
+  }
+}

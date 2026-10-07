@@ -64,7 +64,27 @@ Core implementation exit achieved: an ephemeral signed test license
 deterministically changes entitlements with no network call. Production license
 activation remains blocked on the private issuer and public-key ceremony.
 
-## M5 — Product gates and limits
+## M5 — Production license trust and Enterprise security
+
+- [x] Define the production Ed25519 key ceremony, public metadata, custody,
+  recovery, rotation and compromise procedure.
+- [ ] Run the ceremony in an approved offline hardware custody environment and
+  commit only the real public key.
+- [x] Define the independent proprietary issuer architecture and CLI contract.
+- [x] Add runtime expiry re-evaluation, persistent time floor and clock-rollback
+  protection.
+- [x] Define the clone/restore/DR policy and commercial-license engineering
+  requirements.
+- [x] Compare service authentication choices and recommend mTLS workload
+  identities plus NetworkPolicy defense in depth.
+- [ ] Obtain owner approval for the authentication recommendation, then
+  implement mTLS, replay controls and NetworkPolicy tests.
+- [x] Keep legacy Redis storage through the rollback window.
+
+Exit: ceremony artifacts and service authentication pass security review; only
+the public production trust root enters Core; no customer license is issued.
+
+## M6 — Product gates and limits
 
 - [ ] Decide and enforce the installation-wide workspace limit without breaking public registration.
 - [x] Enforce identity, cloud-account, and retention limits.
@@ -75,7 +95,7 @@ activation remains blocked on the private issuer and public-key ceremony.
 
 Exit: no premium API can be activated by hiding or modifying the web UI.
 
-## M6 — Administration experience
+## M7 — Administration experience
 
 - [ ] Add edition/status/limits/license metadata to Workspace Settings.
 - [ ] Add license installation/replacement workflow for self-hosted administrators.
@@ -84,7 +104,7 @@ Exit: no premium API can be activated by hiding or modifying the web UI.
 
 Exit: an operator can diagnose and replace a license without database access.
 
-## M7 — Self-hosted distribution
+## M8 — Self-hosted distribution
 
 - [ ] Finalize public image access, versioning, SBOM/provenance, and signature docs.
 - [ ] Add Community and licensed examples to Compose and Helm.
@@ -93,7 +113,7 @@ Exit: an operator can diagnose and replace a license without database access.
 
 Exit: a new operator can install and safely upgrade using published artifacts only.
 
-## M8 — Isolated staging
+## M9 — Isolated staging
 
 - [ ] Create `nexus-selfhosted-dev` with isolated state and secrets.
 - [ ] Deploy an immutable signed image.
@@ -102,7 +122,7 @@ Exit: a new operator can install and safely upgrade using published artifacts on
 
 Exit: all checks in [the staging specification](staging.md) pass.
 
-## M9 — Community beta
+## M10 — Community beta
 
 - [ ] Resolve all release-blocking security and data-loss findings.
 - [ ] Publish the selected license, support boundary, and known limitations.
