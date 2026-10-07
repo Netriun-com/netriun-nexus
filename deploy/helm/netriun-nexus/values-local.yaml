@@ -4,7 +4,7 @@ fullnameOverride: nexus
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.32"
+  tag: "0.1.33"
   pullPolicy: IfNotPresent
 
 service:

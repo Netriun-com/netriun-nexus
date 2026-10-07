@@ -43,14 +43,14 @@ func (s *smtpSender) SendVerification(to, username, verifyURL string) error {
 	if err != nil || !strings.EqualFold(recipient.Address, to) || containsHeaderBreak(to) {
 		return fmt.Errorf("invalid verification recipient")
 	}
-	message, err := s.verificationMessage(*recipient, username, verifyURL)
+	message, err := s.verificationMessage(username, verifyURL)
 	if err != nil {
 		return err
 	}
 	return s.send(recipient.Address, message)
 }
 
-func (s *smtpSender) verificationMessage(recipient mail.Address, username, verifyURL string) ([]byte, error) {
+func (s *smtpSender) verificationMessage(username, verifyURL string) ([]byte, error) {
 	if containsUnsafeMailText(username) || len(username) > 100 {
 		return nil, fmt.Errorf("invalid verification message content")
 	}
@@ -91,7 +91,7 @@ func (s *smtpSender) verificationMessage(recipient mail.Address, username, verif
 	var message bytes.Buffer
 	for _, header := range []string{
 		"From: " + s.from.String(),
-		"To: " + recipient.String(),
+		"To: undisclosed-recipients:;",
 		"Subject: " + subject,
 		"MIME-Version: 1.0",
 		"Content-Type: multipart/alternative; boundary=" + multipartWriter.Boundary(),

@@ -11,10 +11,10 @@ import (
 
 func TestVerificationMessageRejectsLineBreakInjection(t *testing.T) {
 	sender := smtpSender{from: mail.Address{Name: "Netriun Nexus", Address: "sender@example.com"}}
-	if _, err := sender.verificationMessage(mail.Address{Address: "user@example.com"}, "attacker\r\nBcc: injected@example.com", "https://nexus.example.com/verify"); err == nil {
+	if _, err := sender.verificationMessage("attacker\r\nBcc: injected@example.com", "https://nexus.example.com/verify"); err == nil {
 		t.Fatal("untrusted username line break accepted")
 	}
-	message, err := sender.verificationMessage(mail.Address{Address: "user@example.com"}, "normal-user", "https://nexus.example.com/verify?token=a&b=c")
+	message, err := sender.verificationMessage("normal-user", "https://nexus.example.com/verify?token=a&b=c")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestWriteMIMEBase64WrapsAndRoundTrips(t *testing.T) {
 func TestVerificationMessageRejectsUnsafeURL(t *testing.T) {
 	sender := smtpSender{from: mail.Address{Name: "Netriun Nexus", Address: "sender@example.com"}}
 	for _, candidate := range []string{"javascript:alert(1)", "https://user:secret@example.com/verify", "https://example.com/verify\x00"} {
-		if _, err := sender.verificationMessage(mail.Address{Address: "user@example.com"}, "normal-user", candidate); err == nil {
+		if _, err := sender.verificationMessage("normal-user", candidate); err == nil {
 			t.Fatalf("unsafe verification URL accepted: %q", candidate)
 		}
 	}
