@@ -14,6 +14,51 @@
       }
     },
     "existingSecret": { "type": "string", "minLength": 1 },
+    "enterprise": {
+      "type": "object",
+      "required": ["serviceURL", "auth", "networkPolicy"],
+      "properties": {
+        "serviceURL": {"type": "string"},
+        "licenseSecretName": {"type": "string"},
+        "licenseSecretKey": {"type": "string", "minLength": 1},
+        "auth": {
+          "type": "object",
+          "required": ["mode", "spiffe", "files"],
+          "properties": {
+            "mode": {"enum": ["spiffe", "files"]},
+            "spiffe": {
+              "type": "object",
+              "required": ["endpointSocket", "socketHostPath", "serverID"],
+              "properties": {
+                "endpointSocket": {"type": "string", "pattern": "^unix://"},
+                "socketHostPath": {"type": "string", "pattern": "^/"},
+                "serverID": {"type": "string", "pattern": "^spiffe://"}
+              }
+            },
+            "files": {
+              "type": "object",
+              "required": ["secretName", "caKey", "clientCertKey", "clientKeyKey", "serverName"],
+              "properties": {
+                "secretName": {"type": "string"},
+                "caKey": {"type": "string", "minLength": 1},
+                "clientCertKey": {"type": "string", "minLength": 1},
+                "clientKeyKey": {"type": "string", "minLength": 1},
+                "serverName": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "required": ["enabled", "port", "enterprisePodLabels"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "enterprisePodLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}}
+          }
+        }
+      }
+    },
     "service": {
       "type": "object",
       "required": ["name", "type", "port", "targetPort"],

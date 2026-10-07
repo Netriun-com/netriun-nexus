@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.34"
+  tag: "0.1.35"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -70,6 +70,26 @@ enterprise:
   # Optional Secret containing an offline signed license document.
   licenseSecretName: ""
   licenseSecretKey: license.json
+  auth:
+    # Required when serviceURL is set. Kubernetes deployments should use
+    # spiffe; files is the local/self-hosted fallback.
+    mode: spiffe
+    spiffe:
+      endpointSocket: unix:///run/spire/sockets/agent.sock
+      socketHostPath: /run/spire/sockets
+      serverID: spiffe://netriun.com/ns/nexus-nteriun/sa/nexus-enterprise
+    files:
+      secretName: ""
+      caKey: ca.crt
+      clientCertKey: tls.crt
+      clientKeyKey: tls.key
+      serverName: nexus-enterprise
+  networkPolicy:
+    enabled: true
+    port: 8443
+    enterprisePodLabels:
+      app.kubernetes.io/name: netriun-nexus-enterprise
+      app.kubernetes.io/component: enterprise
 
 # Create this Secret before installation. It must contain DATABASE_URL,
 # REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD,

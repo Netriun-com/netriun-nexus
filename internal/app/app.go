@@ -115,10 +115,19 @@ func New(ctx context.Context) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	a.Enterprise, err = enterprise.New(cfg.enterpriseServiceURL, nil)
+	a.Enterprise, err = enterprise.New(ctx, enterprise.Config{
+		URL:            cfg.enterpriseServiceURL,
+		AuthMode:       enterprise.AuthMode(cfg.enterpriseAuthMode),
+		SPIFFEEndpoint: cfg.enterpriseSPIFFESocket,
+		ServerSPIFFEID: cfg.enterpriseSPIFFEID,
+		CAFile:         cfg.enterpriseCAFile,
+		ClientCertFile: cfg.enterpriseClientCert,
+		ClientKeyFile:  cfg.enterpriseClientKey,
+		ServerName:     cfg.enterpriseServerName,
+	})
 	if err != nil {
-		a.Close()
-		return nil, err
+		slog.Error("Enterprise service authentication unavailable; Community remains active", "error", err)
+		a.Enterprise = nil
 	}
 	keyring, err := licensing.DefaultKeyring()
 	if err != nil {
@@ -158,6 +167,9 @@ func (a *App) Close() {
 	if a.backgroundStop != nil {
 		a.backgroundStop()
 		a.backgroundWG.Wait()
+	}
+	if a.Enterprise != nil {
+		_ = a.Enterprise.Close()
 	}
 	a.DB.Close()
 	a.Redis.Close()

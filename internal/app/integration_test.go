@@ -54,6 +54,10 @@ func TestIntegration(t *testing.T) {
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("DEPLOYMENT_MODE", "self_hosted")
 	t.Setenv("APP_ORIGIN", "http://localhost:8080")
+	// Enterprise authentication/configuration failures must not prevent
+	// Community startup or readiness.
+	t.Setenv("ENTERPRISE_SERVICE_URL", "https://enterprise.invalid")
+	t.Setenv("ENTERPRISE_AUTH_MODE", "files")
 	ctx := context.Background()
 	a, err := New(ctx)
 	if err != nil {
@@ -62,6 +66,9 @@ func TestIntegration(t *testing.T) {
 	mailer := &fakeMailer{}
 	a.Mailer = mailer
 	defer a.Close()
+	if a.Enterprise != nil {
+		t.Fatal("misconfigured optional Enterprise service was enabled")
+	}
 	if !strings.HasPrefix(a.InstallationID, "ins_") {
 		t.Fatalf("stable installation ID was not created: %q", a.InstallationID)
 	}

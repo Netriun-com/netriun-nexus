@@ -1,25 +1,25 @@
 # Dependency license audit
 
-Audit date: 2026-10-06
+Audit date: 2026-10-07
 Scope: modules linked by `go list -deps ./cmd/...`, repository assets, and
 declared build/runtime container images. This is an engineering compatibility
 review, not legal advice.
 
 ## Result
 
-The two shipped commands currently link **56 external Go modules**:
+The two shipped commands currently link **60 external Go modules**:
 
 | Detected license family | Module count | AGPL-3.0-only compatibility result |
 | --- | ---: | --- |
-| Apache-2.0 | 31 | No incompatibility identified; preserve license and NOTICE material. |
+| Apache-2.0 | 34 | No incompatibility identified; preserve license and NOTICE material. |
 | BSD-2-Clause | 4 | No incompatibility identified; preserve copyright/license text. |
-| BSD-3-Clause | 10 | No incompatibility identified; preserve copyright/license text. |
+| BSD-3-Clause | 11 | No incompatibility identified; preserve copyright/license text. |
 | MIT-style | 11 | No incompatibility identified; preserve copyright/license text. |
 
 No linked Go module was detected under GPL-2.0-only, a source-available
 license, or a proprietary license. No dependency was removed or replaced.
 `NOTICE` now preserves the NOTICE material found in AWS SDK for Go, Smithy Go,
-and CoreOS OIDC. The image build also runs
+CoreOS OIDC, and gRPC. The image build also runs
 `scripts/collect-third-party-licenses.sh`, which fails when a linked module has
 no root license text and copies the exact per-version license/NOTICE files to
 `/usr/share/licenses/netriun-nexus`. Release artifacts outside the image must
@@ -51,7 +51,7 @@ license conditions.
 - `github.com/aws/smithy-go v1.28.1`
 - `github.com/coreos/go-oidc/v3 v3.21.0`
 - `github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467`
-- `github.com/go-jose/go-jose/v4 v4.1.4`
+- `github.com/go-jose/go-jose/v4 v4.1.5`
 - `github.com/jonboulle/clockwork v0.5.0`
 - `github.com/mattermost/xml-roundtrip-validator v0.1.0`
 - `github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd`
@@ -59,7 +59,10 @@ license conditions.
 - `github.com/richardlehane/mscfb v1.0.7`
 - `github.com/richardlehane/msoleps v1.0.6`
 - `github.com/russellhaering/goxmldsig v1.6.0`
+- `github.com/spiffe/go-spiffe/v2 v2.9.0`
 - `github.com/tjfoc/gmsm v1.4.1`
+- `google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8`
+- `google.golang.org/grpc v1.83.2`
 - `gopkg.in/ini.v1 v1.67.0`
 
 ### BSD-2-Clause
@@ -75,12 +78,13 @@ license conditions.
 - `github.com/xuri/excelize/v2 v2.11.0`
 - `github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9`
 - `golang.org/x/crypto v0.56.0`
-- `golang.org/x/net v0.57.0`
+- `golang.org/x/net v0.58.0`
 - `golang.org/x/oauth2 v0.37.0`
 - `golang.org/x/sync v0.22.0`
 - `golang.org/x/sys v0.47.0`
 - `golang.org/x/text v0.41.0`
 - `golang.org/x/time v0.4.0`
+- `google.golang.org/protobuf v1.36.12`
 
 ### MIT-style
 

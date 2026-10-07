@@ -17,6 +17,20 @@ data:
   SMTP_FROM_ADDRESS: {{ .Values.config.smtp.fromAddress | quote }}
   SMTP_FROM_NAME: {{ .Values.config.smtp.fromName | quote }}
   ENTERPRISE_SERVICE_URL: {{ .Values.enterprise.serviceURL | quote }}
+  {{- if .Values.enterprise.serviceURL }}
+  ENTERPRISE_AUTH_MODE: {{ required "enterprise.auth.mode is required when enterprise.serviceURL is set" .Values.enterprise.auth.mode | quote }}
+  {{- if eq .Values.enterprise.auth.mode "spiffe" }}
+  SPIFFE_ENDPOINT_SOCKET: {{ required "enterprise.auth.spiffe.endpointSocket is required" .Values.enterprise.auth.spiffe.endpointSocket | quote }}
+  ENTERPRISE_SPIFFE_SERVER_ID: {{ required "enterprise.auth.spiffe.serverID is required" .Values.enterprise.auth.spiffe.serverID | quote }}
+  {{- else if eq .Values.enterprise.auth.mode "files" }}
+  ENTERPRISE_MTLS_CA_FILE: "/var/run/netriun/enterprise-mtls/ca.crt"
+  ENTERPRISE_MTLS_CLIENT_CERT_FILE: "/var/run/netriun/enterprise-mtls/tls.crt"
+  ENTERPRISE_MTLS_CLIENT_KEY_FILE: "/var/run/netriun/enterprise-mtls/tls.key"
+  ENTERPRISE_MTLS_SERVER_NAME: {{ required "enterprise.auth.files.serverName is required" .Values.enterprise.auth.files.serverName | quote }}
+  {{- else }}
+  {{- fail "enterprise.auth.mode must be spiffe or files" }}
+  {{- end }}
+  {{- end }}
   {{- if .Values.enterprise.licenseSecretName }}
   ENTERPRISE_LICENSE_PATH: "/var/run/netriun/license/license.json"
   {{- end }}

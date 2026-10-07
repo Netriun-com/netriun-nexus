@@ -9,6 +9,7 @@
     "/enterprise/v1/info": {
       "get": {
         "operationId": "getEnterpriseServiceInfo",
+        "security": [{"mutualTLS": []}],
         "responses": {
           "200": {
             "description": "Supported API majors and capabilities",
@@ -24,9 +25,14 @@
     "/enterprise/v1/capabilities/{capability}/{operation}": {
       "post": {
         "operationId": "invokeEnterpriseCapability",
+        "security": [{"mutualTLS": []}],
         "parameters": [
           {"name": "capability", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "operation", "in": "path", "required": true, "schema": {"type": "string"}}
+          {"name": "operation", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "X-Netriun-Request-ID", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}},
+          {"name": "X-Netriun-Request-Timestamp", "in": "header", "required": true, "schema": {"type": "string", "format": "date-time"}},
+          {"name": "Content-Digest", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^sha-256=:[A-Za-z0-9+/]{43}=:$"}},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}}
         ],
         "requestBody": {
           "required": true,
@@ -45,13 +51,18 @@
               }
             }
           },
-          "409": {"description": "Incompatible contract or capability state"},
+          "401": {"description": "Missing, invalid, stale, or unauthenticated request"},
+          "403": {"description": "Authenticated workload is not authorized"},
+          "409": {"description": "Request ID replayed with a different digest, or incompatible capability state"},
           "503": {"description": "Enterprise capability temporarily unavailable"}
         }
       }
     }
   },
   "components": {
+    "securitySchemes": {
+      "mutualTLS": {"type": "mutualTLS", "description": "TLS 1.3 mTLS using an authorized SPIFFE X.509-SVID or installation-local certificate"}
+    },
     "schemas": {
       "ServiceInfo": {
         "type": "object",

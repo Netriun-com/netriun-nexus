@@ -36,6 +36,62 @@ compatibility configuration. To install an offline license, create a separate
 Secret containing `license.json` and set `enterprise.licenseSecretName`. The
 license is mounted read-only; no private signing key belongs in Kubernetes.
 
+## Optional Enterprise service authentication
+
+Community does not require the proprietary Enterprise service. Leave
+`enterprise.serviceURL` empty to keep it disabled. When it is enabled, Core
+accepts only HTTPS and uses TLS 1.3 mutual authentication.
+
+For Kubernetes, install and attest SPIRE separately, then configure the exact
+Enterprise SPIFFE ID. The Workload API socket is mounted read-only from the
+node; private workload keys are delivered and rotated by SPIRE rather than
+stored in a Kubernetes Secret:
+
+```yaml
+enterprise:
+  serviceURL: https://nexus-enterprise:8443
+  auth:
+    mode: spiffe
+    spiffe:
+      endpointSocket: unix:///run/spire/sockets/agent.sock
+      socketHostPath: /run/spire/sockets
+      serverID: spiffe://netriun.com/ns/nexus-nteriun/sa/nexus-enterprise
+```
+
+For local/self-hosted deployments without SPIRE, set `auth.mode: files` and
+provide an installation-local CA plus a Core client certificate in a Secret.
+The certificate files are mounted read-only. Do not reuse a CA or private key
+between installations:
+
+```sh
+kubectl create secret generic nexus-enterprise-mtls \
+  --from-file=ca.crt=/secure/path/ca.crt \
+  --from-file=tls.crt=/secure/path/core.crt \
+  --from-file=tls.key=/secure/path/core.key \
+  --namespace nexus-nteriun
+```
+
+```yaml
+enterprise:
+  serviceURL: https://nexus-enterprise:8443
+  auth:
+    mode: files
+    files:
+      secretName: nexus-enterprise-mtls
+      serverName: nexus-enterprise
+```
+
+The chart creates an ingress NetworkPolicy for Enterprise-labelled Pods and
+allows only Core Pods from this Helm release to reach the configured port. The
+policy is defense in depth and does not replace mTLS identity checks. The
+Enterprise Service itself is a separate proprietary deployment and must remain
+ClusterIP-only with no Ingress or NodePort.
+
+For non-Kubernetes Compose installations, use
+`deploy/docker/compose.enterprise-mtls.example.yaml` as an explicit override;
+it mounts an installation-local certificate directory read-only and keeps the
+private key outside the repository and image.
+
 Render and inspect without deploying:
 
 ```sh

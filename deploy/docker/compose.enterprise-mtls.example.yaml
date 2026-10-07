@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Optional override for a local Enterprise Service connection. The source
+# directory must contain ca.crt, core.crt and core.key with owner-only access.
+# Generate and rotate these credentials outside the repository and container
+# image; never use production license-signing key material here.
+services:
+  app:
+    environment:
+      ENTERPRISE_AUTH_MODE: files
+      ENTERPRISE_MTLS_CA_FILE: /var/run/netriun/enterprise-mtls/ca.crt
+      ENTERPRISE_MTLS_CLIENT_CERT_FILE: /var/run/netriun/enterprise-mtls/core.crt
+      ENTERPRISE_MTLS_CLIENT_KEY_FILE: /var/run/netriun/enterprise-mtls/core.key
+      ENTERPRISE_MTLS_SERVER_NAME: ${ENTERPRISE_MTLS_SERVER_NAME:?Set ENTERPRISE_MTLS_SERVER_NAME}
+    volumes:
+      - type: bind
+        source: ${ENTERPRISE_MTLS_DIR:?Set ENTERPRISE_MTLS_DIR}
+        target: /var/run/netriun/enterprise-mtls
+        read_only: true

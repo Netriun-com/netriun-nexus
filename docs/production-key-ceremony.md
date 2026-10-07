@@ -4,6 +4,11 @@ Status: procedure ready; the first production ceremony has **not** been run.
 The current development workstation and Kubernetes cluster are not approved
 custody environments for a production signing key.
 
+Owner decision recorded for M5: production custody will use an offline HSM
+with dual control and a non-exportable Ed25519 key when supported. No HSM has
+yet been provisioned or qualified, the ceremony remains pending, and the
+production public keyring therefore remains intentionally empty.
+
 ## Approved target environment
 
 The recommended target is a dedicated offline issuer workstation connected to
@@ -83,4 +88,3 @@ Safe repository artifacts are the public keyring entry, its fingerprint, a
 sanitized ceremony record, and public verification vectors. Private-key
 material, HSM credentials, recovery shares, internal audit logs, and the issuer
 database remain outside this repository, images, CI, chat, and Kubernetes.
-

@@ -1,7 +1,10 @@
 # Core to Enterprise service authentication
 
-Status: M5 recommendation awaiting owner approval; no production Enterprise
-service should be connected until this channel is implemented and tested.
+Status: M5 architecture approved. The Core client, TLS 1.3 mTLS modes,
+request-integrity headers and Enterprise ingress NetworkPolicy are implemented.
+The current cluster has no SPIRE or Enterprise service, so live X.509-SVID
+issuance/rotation and server-side idempotency conformance remain deployment
+blockers for the first proprietary service—not for Community.
 
 ## Options considered
 
@@ -12,7 +15,7 @@ service should be connected until this channel is implemented and tested.
 | Shared HMAC secret | Simple for small installs | Symmetric secret distribution, rotation and replay protocol become custom | Rejected as primary |
 | NetworkPolicy only | Useful blast-radius reduction | Identifies network locations, not cryptographic callers | Defense in depth only |
 
-## Recommendation
+## Selected design
 
 Use TLS 1.3 mutual authentication with explicit workload identity
 authorization. On Kubernetes, prefer short-lived X.509-SVIDs delivered by
@@ -60,5 +63,45 @@ beyond TLS packet replay protection.
 - duplicate request ID/different digest and stale timestamp fail;
 - NetworkPolicy allows Core and rejects an unrelated probe pod.
 
-The proposed choice requires owner approval before client/Helm/runtime changes.
+## Request-level contract
 
+Every capability mutation carries:
+
+- `X-Netriun-Request-ID` and the identical `Idempotency-Key`;
+- canonical UTC `X-Netriun-Request-Timestamp`, accepted within five minutes;
+- `Content-Digest` containing SHA-256 of the exact transmitted JSON bytes;
+- the installation, workspace and request IDs in the versioned request body.
+
+The Enterprise service must bind this metadata to the authenticated Core
+SPIFFE ID/certificate. Its private idempotency store returns the recorded result
+for the same request ID and digest, rejects the same ID with another digest,
+and rejects stale timestamps. Core maps authentication failures and conflicting
+replays to explicit errors while keeping Community healthy.
+
+## Core configuration
+
+`ENTERPRISE_SERVICE_URL` must be HTTPS. With `ENTERPRISE_AUTH_MODE=spiffe`,
+Core reads short-lived X.509-SVIDs from `SPIFFE_ENDPOINT_SOCKET` and authorizes
+only `ENTERPRISE_SPIFFE_SERVER_ID`. With `ENTERPRISE_AUTH_MODE=files`, Core
+requires a CA, client certificate/private-key pair and exact server name from
+mounted read-only files. Both modes require TLS 1.3.
+
+If the Enterprise URL is empty, no identity source is initialized. If an
+optional Enterprise identity source is unavailable or misconfigured, Core logs
+the failure, leaves Enterprise disabled and continues in Community mode.
+
+For Compose, set `ENTERPRISE_SERVICE_URL`, `ENTERPRISE_MTLS_DIR` and
+`ENTERPRISE_MTLS_SERVER_NAME`, then add the checked-in override explicitly:
+
+```sh
+docker compose \
+  -f compose.yaml \
+  -f deploy/docker/compose.enterprise-mtls.example.yaml \
+  up -d
+```
+
+The mounted directory must be outside the repository, owner-readable only,
+and contain `ca.crt`, `core.crt` and `core.key`. Renewal should issue the new
+client certificate before the old certificate expires, atomically replace the
+mounted files, and restart Core; CA rotation must use an overlap period during
+which the Enterprise server trusts both old and new installation-local roots.

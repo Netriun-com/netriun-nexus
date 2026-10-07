@@ -75,14 +75,16 @@ activation remains blocked on the private issuer and public-key ceremony.
   protection.
 - [x] Define the clone/restore/DR policy and commercial-license engineering
   requirements.
-- [x] Compare service authentication choices and recommend mTLS workload
-  identities plus NetworkPolicy defense in depth.
-- [ ] Obtain owner approval for the authentication recommendation, then
-  implement mTLS, replay controls and NetworkPolicy tests.
+- [x] Select and implement TLS 1.3 mTLS with SPIFFE/local-certificate modes,
+  request integrity metadata and NetworkPolicy defense in depth.
+- [ ] Install SPIRE and the proprietary Enterprise service, then pass live
+  SVID rotation, server-side replay-store and authorization conformance tests.
 - [x] Keep legacy Redis storage through the rollback window.
 
-Exit: ceremony artifacts and service authentication pass security review; only
-the public production trust root enters Core; no customer license is issued.
+Core-side M5 implementation is complete. Full milestone exit remains blocked
+until an approved HSM ceremony produces the public production trust root and a
+separately deployed Enterprise service passes live SPIFFE/replay conformance.
+No customer license has been issued.
 
 ## M6 — Product gates and limits
 

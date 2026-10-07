@@ -1,6 +1,6 @@
 # Enterprise process architecture
 
-Status: M4 technical boundary approved and implemented in Core contracts.
+Status: M5 technical boundary and authenticated Core client implemented.
 
 ## Product boundary
 
@@ -71,8 +71,9 @@ responses fail only that Enterprise operation with a retryable service error.
 They do not make Core unready. No generic remote operation may be used to
 bypass the enumerated capability allowlist.
 
-The M5 [service-authentication recommendation](enterprise-service-authentication.md)
-selects mTLS workload identities, ClusterIP-only exposure and NetworkPolicy as
-defense in depth, subject to owner approval before implementation. Mutual
-authentication, authorization and replay/idempotency controls are release
-blockers for a proprietary feature service, not for Community.
+The approved M5 [service-authentication design](enterprise-service-authentication.md)
+uses TLS 1.3 mTLS workload identities, ClusterIP-only exposure, request
+digest/timestamp/idempotency metadata and NetworkPolicy as defense in depth.
+Core implements SPIFFE and local-certificate client modes. Live server-side
+authentication and replay-store conformance remain release blockers for the
+first proprietary feature service, not for Community.
