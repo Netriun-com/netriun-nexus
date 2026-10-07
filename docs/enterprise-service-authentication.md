@@ -44,8 +44,10 @@ beyond TLS packet replay protection.
   LoadBalancer.
 - Default-deny ingress selects Enterprise pods; the sole allow rule selects
   Core pods in the approved namespace on the Enterprise TLS port.
-- Core egress is restricted to DNS, PostgreSQL, Valkey, explicitly required
-  cloud/SMTP endpoints, and the Enterprise service. Because Kubernetes
+- The current chart isolates Enterprise ingress and allows only Core on its TLS
+  port. A general Core default-deny egress policy is intentionally not claimed:
+  cloud-provider and SMTP destinations can be dynamic, so their allowlist and
+  CNI/FQDN capabilities need a separate deployment design. Because Kubernetes
   NetworkPolicy is additive and depends on CNI enforcement, deployment tests
   must prove both allowed and denied probes on the target cluster.
 - NetworkPolicy is not service authentication; mTLS authorization remains
