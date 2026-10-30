@@ -54,6 +54,11 @@ Work:
    `NewStyle`, `SetPanes`). Pick one, in this order of preference, and explain
    the choice in the PR:
    - a released `excelize` version that fixes all findings, if one now exists;
+   - an `excelize` pseudo-version from its main branch at or after the newest
+     fix Trivy lists (the scan on PR #1 lists fixes as
+     `2.11.1-0.2026…` pseudo-versions, the newest from 2026-09-30); check its
+     license and changelog, and note it as a temporary pin until a tagged
+     release;
    - replace `excelize` with a small, tested XLSX writer that keeps the same
      output (header row style, frozen first row, same columns);
    - only as a last resort, a documented Trivy ignore per finding with the
