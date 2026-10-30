@@ -1,6 +1,7 @@
 # Dependency license audit
 
 Audit date: 2026-10-07
+T1 dependency update reviewed: 2026-10-30
 Scope: modules linked by `go list -deps ./cmd/...`, repository assets, and
 declared build/runtime container images. This is an engineering compatibility
 review, not legal advice.
@@ -25,6 +26,31 @@ no root license text and copies the exact per-version license/NOTICE files to
 `/usr/share/licenses/netriun-nexus`. Release artifacts outside the image must
 include the same bundle; a summary NOTICE does not replace each dependency's
 license conditions.
+
+## T1 security update review (2026-10-30)
+
+The linked inventory remains 60 modules with the same license-family counts.
+No module was added or removed. The root license/NOTICE files of all nine
+updated linked modules were compared with their previous versions: all are
+byte-for-byte unchanged except `github.com/xuri/efp`, whose copyright year
+advances from 2025 to 2026 without changing its BSD-3-Clause terms. The license
+bundle was regenerated successfully with `scripts/collect-third-party-licenses.sh`.
+
+Excelize is temporarily pinned to
+`v2.11.1-0.20261003002531-6258dcebc4e2` from upstream's default `master` branch.
+Its BSD-3-Clause license is unchanged from v2.11.0. No newer tagged release
+was available at review time. This is the newest fix listed by the
+[baseline image scan](https://github.com/Netriun-com/netriun-nexus/actions/runs/41074600321/job/124128352696),
+and the [upstream changes since v2.11.0](https://github.com/qax-os/excelize/compare/v2.11.0...6258dcebc4e2a2aed985c38a08098dfd908521d1)
+include the earlier listed security fixes. Replace this temporary pin when a
+tagged release contains all of these fixes and passes the image scan.
+
+The Excelize pin requires `mscfb v1.0.8` and `efp v0.0.2`. Excelize and
+`x/net v0.60.0` require `x/crypto v0.57.0` and `x/text v0.42.0`;
+`x/crypto`/`x/net` require `x/sys v0.48.0`, and `x/text` requires
+`x/sync v0.23.0`. These are module-graph requirements, not independent upgrades.
+The graph also advances the unlinked `x/image`, `x/mod`, `x/term`, and `x/tools`
+modules; none enters the shipped commands or changes the linked license counts.
 
 ## Linked Go module inventory
 
@@ -51,12 +77,12 @@ license conditions.
 - `github.com/aws/smithy-go v1.28.1`
 - `github.com/coreos/go-oidc/v3 v3.21.0`
 - `github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467`
-- `github.com/go-jose/go-jose/v4 v4.1.5`
+- `github.com/go-jose/go-jose/v4 v4.1.6`
 - `github.com/jonboulle/clockwork v0.5.0`
 - `github.com/mattermost/xml-roundtrip-validator v0.1.0`
 - `github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd`
 - `github.com/modern-go/reflect2 v1.0.2`
-- `github.com/richardlehane/mscfb v1.0.7`
+- `github.com/richardlehane/mscfb v1.0.8`
 - `github.com/richardlehane/msoleps v1.0.6`
 - `github.com/russellhaering/goxmldsig v1.6.0`
 - `github.com/spiffe/go-spiffe/v2 v2.9.0`
@@ -74,15 +100,15 @@ license conditions.
 
 ### BSD-3-Clause
 
-- `github.com/xuri/efp v0.0.1`
-- `github.com/xuri/excelize/v2 v2.11.0`
+- `github.com/xuri/efp v0.0.2`
+- `github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2`
 - `github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9`
-- `golang.org/x/crypto v0.56.0`
-- `golang.org/x/net v0.58.0`
+- `golang.org/x/crypto v0.57.0`
+- `golang.org/x/net v0.60.0`
 - `golang.org/x/oauth2 v0.37.0`
-- `golang.org/x/sync v0.22.0`
-- `golang.org/x/sys v0.47.0`
-- `golang.org/x/text v0.41.0`
+- `golang.org/x/sync v0.23.0`
+- `golang.org/x/sys v0.48.0`
+- `golang.org/x/text v0.42.0`
 - `golang.org/x/time v0.4.0`
 - `google.golang.org/protobuf v1.36.12`
 
