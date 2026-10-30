@@ -34,6 +34,8 @@ Start with **T1**, then **T2**. T3 to T5 can follow in any order. Phase 2
 
 ### T1. Fix the HIGH CVEs so the Images workflow is green
 
+- [x] Done — merged in [PR #2](https://github.com/Netriun-com/netriun-nexus/pull/2).
+
 Why: the `Images` workflow (`.github/workflows/images.yml`, step
 `make image-scan`) has failed daily since 2026-10-25 with 11 HIGH findings, so
 no release is possible.
