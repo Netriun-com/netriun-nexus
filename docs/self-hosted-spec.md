@@ -1,5 +1,7 @@
 # Self-hosted and entitlement specification
 
+This document is superseded by [docs/spec-v2.md](spec-v2.md) where they differ.
+
 This specification defines the technical boundary between Community and licensed
 self-hosted editions. It is deliberately independent of billing providers and
 cloud-service implementations.

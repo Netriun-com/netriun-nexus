@@ -1,12 +1,11 @@
 # Netriun Nexus
 
-Netriun Nexus is a multi-tenant control plane for orchestrating multi-cloud operations, approvals, access, and live infrastructure health from one place. It includes PostgreSQL, Valkey, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
+Netriun Nexus is a multi-cloud account orchestration platform for managing cloud resources, access, and infrastructure inventory in one place. It includes PostgreSQL, Valkey, an embedded web interface, and a versioned REST API. Each account receives an isolated workspace. AWS EC2, Alibaba Cloud ECS, WUYING EDS and OSS, Microsoft Azure Virtual Machines, and Google Compute Engine are supported.
 
-Nexus is evolving into an open-core product: a public Community image, optional
-proprietary Enterprise components, and private Netriun Cloud infrastructure.
-The approved behavior and implementation sequence are documented in
-the [product definition](docs/product-definition.md), [self-hosted specification](docs/self-hosted-spec.md),
-[staging specification](docs/staging.md), and [delivery roadmap](docs/roadmap.md).
+The product direction and implementation sequence are documented in the
+[product spec v2](docs/spec-v2.md), [target architecture](docs/architecture-v2.md),
+and [roadmap](docs/roadmap.md). These distinguish current capabilities from
+planned work.
 Netriun Nexus uses an open-core model. The Community/Core program, public API,
 CLI, and first-party provider implementations identified in [LICENSE.md](LICENSE.md)
 are Open Source under **AGPL-3.0-only**. Netriun Enterprise and Netriun Cloud
@@ -57,7 +56,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Snapshot-first Alibaba OSS bucket inventory with metadata, usage statistics, search/sort/filter, list/visual modes, and private bucket creation.
 - Snapshot-first Alibaba ECS security groups with attached-instance visibility, list/visual modes, rule inspection, and audited ingress/egress rule creation and deletion.
 - Guided AWS, Alibaba Cloud, Azure and Google Cloud connection setup with a required live credential and compute-access test before saving.
-- Scheduled collection across explicitly selected or all enabled regions.
+- Collection across explicitly selected or all enabled regions when a service page is opened or a refresh is requested. A periodic scheduler is planned for phase 3 of the [roadmap](docs/roadmap.md).
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
@@ -81,7 +80,7 @@ Every workspace is isolated at the database-query and authorization layers. The 
 | operator | Viewer capabilities plus start, stop and reboot |
 | manager | Operator capabilities; account and membership management when the corresponding group policies allow it |
 
-Only workspace administrators edit group policies, users, collection settings, and view that workspace's audit records. Moving an account requires management permission on both the current and destination groups. Password or user-role updates revoke all that user's sessions. Owners cannot be removed or demoted.
+Only workspace administrators edit group policies, users, audit retention settings, and view that workspace's audit records. Moving an account requires management permission on both the current and destination groups. Password or user-role updates revoke all that user's sessions. Owners cannot be removed or demoted.
 
 ## API example
 

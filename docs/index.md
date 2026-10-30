@@ -5,6 +5,10 @@ This is the canonical information architecture for product documentation. Keep t
 ## 1. Getting Started
 
 - Start with Netriun Nexus
+- Product direction and current versus planned capabilities — see [product spec v2](spec-v2.md)
+- Target architecture and incremental migration — see [architecture v2](architecture-v2.md)
+- Current implementation phases — see [roadmap](roadmap.md)
+- Historical milestones — see [archived v1 roadmap](archive/roadmap-v1.md)
 - Product editions and delivery model — see [product definition](product-definition.md)
 - Self-hosted installation and licensing contract — see [self-hosted specification](self-hosted-spec.md)
 - Open-core license boundary — see [licensing architecture](licensing-architecture.md)
@@ -48,7 +52,6 @@ This is the canonical information architecture for product documentation. Keep t
 - Snapshot-first pages, asynchronous live-refresh jobs, database snapshots, and retention
 - Local, Docker, and Kubernetes operation
 - Staging topology and promotion checks — see [staging specification](staging.md)
-- Milestone implementation order — see [delivery roadmap](roadmap.md)
 - Dependency licensing and release obligations — see [dependency license audit](dependency-license-audit.md)
 - Valkey decision, migration evidence, and rollback — see [Valkey runtime](redis-licensing.md)
 - Core/Enterprise process contract — see [Enterprise architecture](enterprise-architecture.md)
