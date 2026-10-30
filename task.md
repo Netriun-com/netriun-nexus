@@ -78,6 +78,8 @@ Acceptance:
 
 ### T2. Add `AGENTS.md`
 
+- [x] Done — merged in [PR #3](https://github.com/Netriun-com/netriun-nexus/pull/3).
+
 Why: this is the main control for how Codex works in this repository.
 
 Work: add `AGENTS.md` at the repository root that states, briefly:

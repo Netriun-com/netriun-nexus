@@ -1,5 +1,7 @@
 # Netriun Nexus product definition
 
+This document is superseded by [docs/spec-v2.md](spec-v2.md) where they differ.
+
 This document is the product contract for Netriun Nexus. Product, UX, API,
 licensing, and deployment decisions should remain consistent with it. Changes
 to this contract require an explicit product decision and a matching update to
