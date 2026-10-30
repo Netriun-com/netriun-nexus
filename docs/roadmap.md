@@ -1,134 +1,148 @@
-# Netriun Nexus delivery roadmap
+# Netriun Nexus roadmap (v2)
 
-This is the execution order for the self-hosted product. Each milestone has an
-observable exit condition; later milestones should not bypass an incomplete
-security or data-safety prerequisite.
+Status: approved plan, started 2026-10-30.
+Inputs: [spec v2](spec-v2.md) and [target architecture](architecture-v2.md).
+Current tasks: [task.md](../task.md).
+The previous milestone plan (M0 to M10) is archived in
+[archive/roadmap-v1.md](archive/roadmap-v1.md).
 
-## M0 — Repository and artifact foundation
+## How to use this roadmap
 
-- [x] Transfer the repository to `Netriun-com/netriun-nexus`.
-- [x] Move the canonical image name to `ghcr.io/netriun-com/netriun-nexus`.
-- [x] Add race/integration CI, exact-artifact vulnerability scanning, and signing.
-- [x] Run the image as an unprivileged user on a minimal runtime base.
-- [x] Make the GHCR package anonymously pullable.
-- [x] Protect default branches against force-push and deletion.
-- [x] Publish and deploy the first signed organization release (`v0.1.27`).
+- Phases run in order. A phase starts only when the previous phase's exit
+  criteria are met, except where a phase says it can run in parallel.
+- Every phase ships a working Nexus. There is no big-bang rewrite.
+- `task.md` holds the tasks for the current phase only. When a phase is done,
+  its tasks are removed from `task.md`, this file is updated, and the next
+  phase's tasks are written and reviewed before work starts.
+- Codex implements. Saheb and Claude review every change through a pull
+  request. Nothing is pushed directly to `main`.
+- The cluster migration on 2026-11-18 moves whatever state exists that day. It
+  does not change this order.
 
-## M1 — Product contract
+## Phase overview
 
-- [x] Define Cloud, Community, and Enterprise delivery forms.
-- [x] Define stable features, limits, expiry behavior, and data-access rules.
-- [x] Define staging topology and release promotion.
-- [x] Select and publish the AGPL-3.0-only Open Source Work license and explicit proprietary boundaries.
-- [ ] Approve final Community limits and commercial packaging.
+| Phase | Goal | Fixes | Status |
+| --- | --- | --- | --- |
+| 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | **Current** |
+| 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | Can run in parallel with phase 1 |
+| 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | Next |
+| 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | Planned |
+| 5. Live updates | SSE stream, row patches | Full page re-render | Planned |
+| 6. Frontend rebuild | React + TypeScript + Vite UI on a typed client | 167KB single-file UI | Planned |
+| 7. Orchestration and approvals | Engine, approvals, the five workflows, topology | Product vision | Planned |
+| 8. CLI and API tokens | `nexusctl` and personal API tokens | CLI capability | Planned |
 
-Exit: product and legal decisions permit public self-hosted distribution.
+Phases 3 to 5 fix the loading problem at its root. Phases 6 to 8 deliver the
+v2 product. The first release (MVP) is the end of phase 8.
 
-## M2 — Entitlement foundation
+## Phase 1 — Stabilize
 
-- [x] Add typed feature, limit, edition, and status models.
-- [x] Implement the Community entitlement provider.
-- [x] Add backend decision helpers and stable API error responses.
-- [x] Add unit and integration tests that prove RBAC and entitlement are independent.
-- [x] Expose administrator-safe entitlement status through the API.
+- [ ] The `Images` workflow is green again: no HIGH or CRITICAL findings in the
+  built image.
+- [ ] `AGENTS.md` exists and states the architecture rules, PR size, test
+  requirements, and the "code and docs change together" rule.
+- [ ] `main` accepts changes only through reviewed pull requests.
+- [ ] The README and docs no longer claim features that do not exist
+  (scheduled collection, approvals) and point to spec v2.
+- [ ] Hotfix: navigating between pages no longer starts a live refresh for a
+  fresh snapshot, and a finished refresh no longer re-renders the whole page.
 
-Exit: Community behavior is centrally enforced without license parsing.
+Exit: a signed image can be released, and switching pages quickly in the
+current UI causes no flicker and no duplicate refresh jobs.
 
-## M3 — Open-core licensing boundary
+## Phase 2 — Extract licensing
 
-- [x] Publish the unmodified AGPL-3.0-only license text.
-- [x] Define the exact Community/Core, Enterprise, and Netriun Cloud path boundary.
-- [x] Map current packages into the target `core/community/providers/api/cli` architecture.
-- [x] Add source SPDX identifiers and preserve required dependency notices.
-- [x] Audit linked Go dependencies and declared container/runtime licenses.
-- [x] Record unresolved legal/product decisions without silently selecting terms.
+- [ ] `internal/licensing`, `internal/enterprise`, and `api/enterprise/v1` are
+  no longer linked into the Nexus binary.
+- [ ] `internal/entitlements` keeps its interface and gains a
+  `commercialplatform` provider stub for the Netriun Commercial Platform that
+  returns Community until that platform's API exists.
+- [ ] `ENTERPRISE_*` settings, the mTLS Compose example, the Helm
+  `enterprise-networkpolicy.yaml`, and the licensing documents are removed from
+  this repository (archived in the shared licensing project).
+- [ ] Migrations `009` and `010` stay unchanged.
 
-Exit: every current path has a documented licensing destination, the Open
-Source Work is redistributable under AGPL-3.0-only, and proprietary code has a
-non-AGPL boundary.
+Exit: Nexus builds and runs with Community entitlements and no licensing code;
+existing installations upgrade without data loss.
 
-## M4 — Offline Enterprise license
+## Phase 3 — Durable jobs and sync
 
-- [x] Replace the Community Redis runtime with pinned Valkey and preserve rollback storage.
-- [x] Implement RFC 8785 canonical payload and Ed25519 signature verification.
-- [x] Add versioned `key_id` rotation states and interoperability/security vectors.
-- [x] Add stable PostgreSQL installation identity and read-only file loading.
-- [x] Implement five-minute skew, 14-day grace, and non-destructive Community fallback.
-- [x] Define the separate `/enterprise/v1` HTTP/JSON process contract.
-- [x] Enforce Community human-identity, cloud-account, and retention limits.
-- [ ] Add an offline internal license issuer outside this repository.
-- [ ] Perform the production key ceremony and add only its public key to Core.
-- [ ] Add atomic live reload and persistent license-status audit events.
+- [ ] `jobs` table with leases, retries, backoff, and per-account and
+  per-provider concurrency keys.
+- [ ] `sync_state` table and a scheduler with the approved default intervals.
+- [ ] `nexus serve`, `nexus worker`, and combined mode in one binary; Helm runs
+  two Deployments.
+- [ ] Today's four refresh systems (inventory, EDS, OSS, security groups) run
+  on the queue. Pages never trigger sync; the refresh button enqueues one
+  targeted job.
+- [ ] Sync errors are written with a fresh context and shown per account and
+  region.
+- [ ] Audit retention runs as a scheduled job.
 
-Core implementation exit achieved: an ephemeral signed test license
-deterministically changes entitlements with no network call. Production license
-activation remains blocked on the private issuer and public-key ceremony.
+Exit: killing a worker mid-sync loses no work, and a large Alibaba account does
+not delay other accounts.
 
-## M5 — Production license trust and Enterprise security
+## Phase 4 — One resource model
 
-- [x] Define the production Ed25519 key ceremony, public metadata, custody,
-  recovery, rotation and compromise procedure.
-- [ ] Run the ceremony in an approved offline hardware custody environment and
-  commit only the real public key.
-- [x] Define the independent proprietary issuer architecture and CLI contract.
-- [x] Add runtime expiry re-evaluation, persistent time floor and clock-rollback
-  protection.
-- [x] Define the clone/restore/DR policy and commercial-license engineering
-  requirements.
-- [x] Select and implement TLS 1.3 mTLS with SPIFFE/local-certificate modes,
-  request integrity metadata and NetworkPolicy defense in depth.
-- [ ] Install SPIRE and the proprietary Enterprise service, then pass live
-  SVID rotation, server-side replay-store and authorization conformance tests.
-- [x] Keep legacy Redis storage through the rollback window.
+- [ ] `resources` and `resource_relations` tables with the indexes in the
+  architecture (including `pg_trgm`).
+- [ ] Sync writes instances, then EDS, OSS, and security groups, into
+  `resources`; `service_snapshots` is no longer written.
+- [ ] Alibaba and AWS sync networks, subnets, security groups, and load
+  balancers with relations.
+- [ ] `GET /api/v1/resources` and `GET /api/v1/resources/{id}` with cursor
+  pagination, documented in `docs/openapi.json`.
+- [ ] Provider adapters behind the `Provider` interface in
+  `providers/{aws,alibaba,azure,gcp}` with recorded-response tests.
 
-Core-side M5 implementation is complete. Full milestone exit remains blocked
-until an approved HSM ceremony produces the public production trust root and a
-separately deployed Enterprise service passes live SPIFFE/replay conformance.
-No customer license has been issued.
+Exit: every list in the UI reads from `resources` in under one second.
 
-## M6 — Product gates and limits
+## Phase 5 — Live updates
 
-- [ ] Decide and enforce the installation-wide workspace limit without breaking public registration.
-- [x] Enforce identity, cloud-account, and retention limits.
-- [ ] Gate only the approved new Enterprise capabilities; existing AGPL SSO,
-  roles, billing reports, and exports remain Core and must not be gated.
-- [ ] Cover every gated mutation with bypass-resistant integration tests.
-- [ ] Preserve read access and safe degradation after license expiry.
+- [ ] `GET /api/v1/events` (SSE) with `LISTEN/NOTIFY` fan-out, access filtering,
+  `Last-Event-ID`, and heartbeats.
+- [ ] No `WriteTimeout` on the SSE route; ingress and Cloudflare settings
+  documented.
+- [ ] The UI patches changed rows and no longer polls job status.
 
-Exit: no premium API can be activated by hiding or modifying the web UI.
+Exit: a resource change appears in an open browser without a page refresh or
+flicker.
 
-## M7 — Administration experience
+## Phase 6 — Frontend rebuild
 
-- [ ] Add edition/status/limits/license metadata to Workspace Settings.
-- [ ] Add license installation/replacement workflow for self-hosted administrators.
-- [ ] Explain locked capabilities and current usage without exposing secrets.
-- [ ] Add grace and expiry warnings with remediation links.
+- [ ] `web/` project (React + TypeScript + Vite) embedded with `go:embed`;
+  strict CSP kept.
+- [ ] Typed API client generated from `docs/openapi.json`.
+- [ ] Screens migrated one at a time; the old `app.js` is deleted at the end.
+- [ ] Dependency licenses checked against the AGPL boundary.
 
-Exit: an operator can diagnose and replace a license without database access.
+Exit: every current screen runs on the new frontend with tests.
 
-## M8 — Self-hosted distribution
+## Phase 7 — Orchestration and approvals
 
-- [ ] Finalize public image access, versioning, SBOM/provenance, and signature docs.
-- [ ] Add Community and licensed examples to Compose and Helm.
-- [ ] Document install, upgrade, backup/restore, rollback, SMTP, and Cloudflare paths.
-- [ ] Add migration and compatibility policy.
+- [ ] `operations` and `approvals` tables, the orchestration engine, and the
+  operations API.
+- [ ] The EDS wizard migrated onto the engine as the reference workflow.
+- [ ] The five spec v2 workflows on Alibaba and AWS.
+- [ ] Two-person approval for risky plans (deletes, internet exposure, security
+  rule changes; adjustable per workspace).
+- [ ] Topology view.
 
-Exit: a new operator can install and safely upgrade using published artifacts only.
+Exit: a user builds a network on Alibaba and on AWS from one form, with preview,
+live progress, and one audit record.
 
-## M9 — Isolated staging
+## Phase 8 — CLI and API tokens
 
-- [ ] Create `nexus-selfhosted-dev` with isolated state and secrets.
-- [ ] Deploy an immutable signed image.
-- [ ] Pass fresh-install, upgrade, rollback, license-state, and cloud smoke tests.
-- [ ] Record release evidence and operational recovery time.
+- [ ] Personal API tokens (create, revoke, expiry, stored hashed).
+- [ ] `nexusctl` covering resources, workflows, operations, and approvals, with
+  table and JSON output.
 
-Exit: all checks in [the staging specification](staging.md) pass.
+Exit: everything the UI can do can be done with `nexusctl`.
 
-## M10 — Community beta
+## After the first release
 
-- [ ] Resolve all release-blocking security and data-loss findings.
-- [ ] Publish the selected license, support boundary, and known limitations.
-- [ ] Tag the release and publish checksums, signatures, chart, and release notes.
-- [ ] Open a documented feedback and vulnerability-reporting path.
-
-Exit: the Community self-hosted beta is publicly installable and supportable.
+- Database management (RDS, ApsaraDB, …).
+- Community versus Enterprise feature split, decided after the first workflows
+  exist.
+- Public SaaS (Nexus Cloud), revisited after the MVP.
+- Cross-cloud connectivity and Infrastructure-as-Code export.
