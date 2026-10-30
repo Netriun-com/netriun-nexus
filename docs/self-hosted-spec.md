@@ -119,4 +119,4 @@ version compatibility must be explicit before the first Enterprise build.
 
 The Open Source Work license and proprietary boundaries are defined in the
 root `LICENSE.md`. Valkey resolved the former Redis licensing blocker. Remaining
-beta gates are tracked in [the roadmap](roadmap.md).
+beta gates are tracked in [the archived v1 roadmap](archive/roadmap-v1.md).
