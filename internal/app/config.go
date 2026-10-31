@@ -14,28 +14,19 @@ import (
 )
 
 type runtimeConfig struct {
-	databaseURL            string
-	redisURL               string
-	encryptionKey          string
-	origin                 string
-	secureCookies          bool
-	trustedProxies         []*net.IPNet
-	smtpHost               string
-	smtpPort               string
-	smtpUsername           string
-	smtpPassword           string
-	smtpFromAddress        string
-	smtpFromName           string
-	deploymentMode         entitlements.DeploymentMode
-	enterpriseLicensePath  string
-	enterpriseServiceURL   string
-	enterpriseAuthMode     string
-	enterpriseSPIFFESocket string
-	enterpriseSPIFFEID     string
-	enterpriseCAFile       string
-	enterpriseClientCert   string
-	enterpriseClientKey    string
-	enterpriseServerName   string
+	databaseURL     string
+	redisURL        string
+	encryptionKey   string
+	origin          string
+	secureCookies   bool
+	trustedProxies  []*net.IPNet
+	smtpHost        string
+	smtpPort        string
+	smtpUsername    string
+	smtpPassword    string
+	smtpFromAddress string
+	smtpFromName    string
+	deploymentMode  entitlements.DeploymentMode
 }
 
 func loadRuntimeConfig() (runtimeConfig, error) {
@@ -90,15 +81,6 @@ func loadRuntimeConfig() (runtimeConfig, error) {
 	if err != nil {
 		return c, err
 	}
-	c.enterpriseLicensePath = strings.TrimSpace(os.Getenv("ENTERPRISE_LICENSE_PATH"))
-	c.enterpriseServiceURL = strings.TrimSpace(os.Getenv("ENTERPRISE_SERVICE_URL"))
-	c.enterpriseAuthMode = strings.TrimSpace(os.Getenv("ENTERPRISE_AUTH_MODE"))
-	c.enterpriseSPIFFESocket = strings.TrimSpace(os.Getenv("SPIFFE_ENDPOINT_SOCKET"))
-	c.enterpriseSPIFFEID = strings.TrimSpace(os.Getenv("ENTERPRISE_SPIFFE_SERVER_ID"))
-	c.enterpriseCAFile = strings.TrimSpace(os.Getenv("ENTERPRISE_MTLS_CA_FILE"))
-	c.enterpriseClientCert = strings.TrimSpace(os.Getenv("ENTERPRISE_MTLS_CLIENT_CERT_FILE"))
-	c.enterpriseClientKey = strings.TrimSpace(os.Getenv("ENTERPRISE_MTLS_CLIENT_KEY_FILE"))
-	c.enterpriseServerName = strings.TrimSpace(os.Getenv("ENTERPRISE_MTLS_SERVER_NAME"))
 	return c, nil
 }
 
