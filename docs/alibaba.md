@@ -47,7 +47,9 @@ Alibaba BSS OpenAPI. Select Alibaba Cloud and the required accounts in the
 sidebar, choose a billing month, select ECS, EDS, or both, optionally enter a
 resource name or instance ID filter, and choose **Sync exact bill**. Stored
 rows can then be filtered without another provider request and exported to
-Excel or PDF.
+Excel or PDF. The default billing cycle is the previous calendar month in UTC,
+including on the last day of a month. This also applies when the API
+`billing_cycle` parameter is omitted or empty.
 
 Nexus reports `PretaxAmount`, the payable pre-tax amount returned by Alibaba,
 and keeps each currency separate. The API exposes the latest 18 billing
