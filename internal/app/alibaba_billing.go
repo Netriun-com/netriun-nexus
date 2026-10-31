@@ -58,7 +58,13 @@ type alibabaBillingReport struct {
 	RowCount      int                   `json:"row_count"`
 }
 
-func defaultBillingCycle() string { return time.Now().UTC().AddDate(0, -1, 0).Format("2006-01") }
+func defaultBillingCycle() string { return defaultBillingCycleAt(time.Now()) }
+
+func defaultBillingCycleAt(now time.Time) string {
+	now = now.UTC()
+	current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return current.AddDate(0, -1, 0).Format("2006-01")
+}
 
 func validBillingCycle(value string) bool {
 	if !billingCyclePattern.MatchString(value) {

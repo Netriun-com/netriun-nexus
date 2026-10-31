@@ -33,6 +33,31 @@ func TestRequestedBillingServices(t *testing.T) {
 	}
 }
 
+func TestDefaultBillingCycleAt(t *testing.T) {
+	tests := []struct {
+		now, want string
+	}{
+		{"2026-10-31T12:00:00Z", "2026-09"},
+		{"2026-03-31T12:00:00Z", "2026-02"},
+		{"2026-01-01T00:00:00Z", "2025-12"},
+		{"2024-03-31T12:00:00Z", "2024-02"},
+		// UTC, rather than the reference's local date, determines the month.
+		{"2026-11-01T00:30:00+02:00", "2026-09"},
+		{"2026-10-31T23:30:00-02:00", "2026-10"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.now, func(t *testing.T) {
+			now, err := time.Parse(time.RFC3339, tt.now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := defaultBillingCycleAt(now); got != tt.want {
+				t.Errorf("defaultBillingCycleAt(%s) = %q, want %q", tt.now, got, tt.want)
+			}
+		})
+	}
+}
+
 // billingCycleTestMonth supplies calendar-month fixtures to TestValidBillingCycle.
 func billingCycleTestMonth(now time.Time, offset int) string {
 	now = now.UTC()
