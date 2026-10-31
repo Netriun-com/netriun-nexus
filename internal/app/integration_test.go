@@ -302,6 +302,42 @@ func TestIntegration(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("expected two instances across selected AWS accounts, got %d", len(list.Data))
 	}
+	t.Run("instance snapshot freshness", func(t *testing.T) {
+		oldest := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Second)
+		newest := oldest.Add(8 * time.Minute)
+		if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=CASE WHEN id=$1 THEN $3::timestamptz ELSE $4::timestamptz END WHERE id=ANY($2)", account1, []int64{account1, account2}, oldest, newest); err != nil {
+			t.Fatal(err)
+		}
+		check := func(path, token string, want *time.Time, rows int) {
+			t.Helper()
+			response := request("GET", path, token, nil, 200)
+			var result struct {
+				Data      []any      `json:"data"`
+				FetchedAt *time.Time `json:"fetched_at"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(response.Body.String(), `"fetched_at"`) || len(result.Data) != rows || (want == nil) != (result.FetchedAt == nil) || (want != nil && !want.Equal(*result.FetchedAt)) {
+				t.Fatalf("unexpected snapshot: %s", response.Body.String())
+			}
+		}
+		scope := fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2)
+		check(scope, adminToken, &oldest, 2)
+		// Filtered/empty lists and pagination must retain scope-level freshness.
+		check(scope+"&q=nonexistent-instance", adminToken, &oldest, 0)
+		check(scope+"&offset=200", adminToken, &oldest, 0)
+		check(fmt.Sprintf("/api/v1/instances?account_ids=%d", account2), adminToken, &newest, 1)
+		if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=NULL WHERE id=$1", account2); err != nil {
+			t.Fatal(err)
+		}
+		check(scope, adminToken, nil, 2)
+		// An inaccessible, never-collected account cannot change viewer freshness.
+		check("/api/v1/instances", viewer, &oldest, 1)
+		if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=NULL WHERE id=$1", account1); err != nil {
+			t.Fatal(err)
+		}
+	})
 	request("GET", fmt.Sprintf("/api/v1/summary?account_ids=%d,%d", account1, account2), adminToken, nil, 200)
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, alibabaAccount), adminToken, nil, 400)

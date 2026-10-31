@@ -37,3 +37,15 @@ func (a *App) serviceSnapshot(ctx context.Context, workspaceID, accountID int64,
 	payload["snapshot"], payload["fetched_at"] = true, fetchedAt
 	return payload, true, nil
 }
+
+// instanceSnapshot reads rows and scope freshness in the same database snapshot.
+// The oldest successful account collection governs freshness, including empty
+// inventories. A never-collected account makes the entire scope stale.
+func (a *App) instanceSnapshot(ctx context.Context, workspaceID int64, ids []int64, query, state, region string, limit, offset int) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := a.DB.QueryRow(ctx, `SELECT json_build_object(
+ 'data', COALESCE((SELECT json_agg(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE a.workspace_id=$1 AND a.id=ANY($2) AND ($3='' OR i.name ILIKE '%'||$3||'%' OR i.instance_id ILIKE '%'||$3||'%' OR i.public_ip ILIKE '%'||$3||'%' OR a.name ILIKE '%'||$3||'%') AND ($4='' OR i.state=$4) AND ($5='' OR i.region=$5) ORDER BY i.name,i.id LIMIT $6 OFFSET $7) t), '[]'::json),
+ 'fetched_at', (SELECT CASE WHEN count(*)=count(last_sync_at) THEN min(last_sync_at) END FROM cloud_accounts WHERE workspace_id=$1 AND id=ANY($2))
+ )`, workspaceID, ids, query, state, region, limit, offset).Scan(&result)
+	return result, err
+}

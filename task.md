@@ -104,6 +104,8 @@ is in it.
 
 ### T3. Make the README and docs honest
 
+- [x] Done — merged in [PR #4](https://github.com/Netriun-com/netriun-nexus/pull/4).
+
 Why: the README promises features that do not exist yet.
 
 Work:
