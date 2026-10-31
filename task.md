@@ -128,6 +128,8 @@ approvals as existing features; all links resolve.
 
 ### T4. Hotfix: stop page navigation from re-syncing and re-rendering
 
+- [x] Done — merged in [PR #5](https://github.com/Netriun-com/netriun-nexus/pull/5).
+
 Why: this is the loading problem Saheb sees. Today, opening or switching a
 page in `internal/app/web/app.js` sets `inventoryRefreshRequested`,
 `edsRefreshRequested.*`, `ossRefreshRequested`, or
