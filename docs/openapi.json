@@ -1017,7 +1017,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": ["data", "fetched_at"],
+                  "properties": {
+                    "data": { "type": "array", "items": { "type": "object" } },
+                    "fetched_at": {
+                      "type": ["string", "null"], "format": "date-time",
+                      "description": "Oldest successful collection time across the selected accessible accounts, independent of row filters and pagination. Null if any selected account has never been collected, or no accounts are selected. Navigation refreshes snapshots older than five minutes (or missing), unless a refresh is already active."
+                    }
+                  }
                 }
               }
             }

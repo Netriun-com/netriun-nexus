@@ -25,7 +25,12 @@ func (a *App) instances(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE a.workspace_id=$1 AND a.id=ANY($2) AND ($3='' OR i.name ILIKE '%'||$3||'%' OR i.instance_id ILIKE '%'||$3||'%' OR i.public_ip ILIKE '%'||$3||'%' OR a.name ILIKE '%'||$3||'%') AND ($4='' OR i.state=$4) AND ($5='' OR i.region=$5) ORDER BY i.name,i.id LIMIT $6 OFFSET $7) t`, u.WorkspaceID, ids, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
+	result, err := a.instanceSnapshot(r.Context(), u.WorkspaceID, ids, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	write(w, http.StatusOK, result)
 }
 func (a *App) instanceTarget(r *http.Request, id int64, mode string) (int64, string, string, string, error) {
 	var accountID int64
