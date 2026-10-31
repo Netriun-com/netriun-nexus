@@ -186,6 +186,8 @@ repository.
 
 ### T6. Remove licensing and the Enterprise client from the runtime
 
+- [x] Done — merged in [PR #9](https://github.com/Netriun-com/netriun-nexus/pull/9).
+
 Work:
 
 1. In `internal/app/app.go`, remove the `Enterprise *enterprise.Client` and
