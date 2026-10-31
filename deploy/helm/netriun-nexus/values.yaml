@@ -63,27 +63,8 @@ config:
     fromAddress: s.amrei@netriun.com
     fromName: Netriun Nexus
 
+# Legacy Enterprise NetworkPolicy retained until its separate T8 extraction.
 enterprise:
-  # Optional proprietary service. Core remains fully functional when empty or
-  # unavailable.
-  serviceURL: ""
-  # Optional Secret containing an offline signed license document.
-  licenseSecretName: ""
-  licenseSecretKey: license.json
-  auth:
-    # Required when serviceURL is set. Kubernetes deployments should use
-    # spiffe; files is the local/self-hosted fallback.
-    mode: spiffe
-    spiffe:
-      endpointSocket: unix:///run/spire/sockets/agent.sock
-      socketHostPath: /run/spire/sockets
-      serverID: spiffe://netriun.com/ns/nexus-nteriun/sa/nexus-enterprise
-    files:
-      secretName: ""
-      caKey: ca.crt
-      clientCertKey: tls.crt
-      clientKeyKey: tls.key
-      serverName: nexus-enterprise
   networkPolicy:
     enabled: true
     port: 8443

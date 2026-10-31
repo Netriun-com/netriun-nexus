@@ -20,9 +20,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/netriun/nexus/internal/enterprise"
 	"github.com/netriun/nexus/internal/entitlements"
-	"github.com/netriun/nexus/internal/licensing"
 	"github.com/netriun/nexus/internal/secure"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -41,9 +39,7 @@ type App struct {
 	Mailer                     mailSender
 	Policy                     *PolicyEngine
 	Entitlements               *entitlements.Service
-	Enterprise                 *enterprise.Client
 	InstallationID             string
-	licenseClock               *licensing.TimeGuard
 	backgroundCtx              context.Context
 	backgroundStop             context.CancelFunc
 	backgroundWG               sync.WaitGroup
@@ -115,48 +111,7 @@ func New(ctx context.Context) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	a.Enterprise, err = enterprise.New(ctx, enterprise.Config{
-		URL:            cfg.enterpriseServiceURL,
-		AuthMode:       enterprise.AuthMode(cfg.enterpriseAuthMode),
-		SPIFFEEndpoint: cfg.enterpriseSPIFFESocket,
-		ServerSPIFFEID: cfg.enterpriseSPIFFEID,
-		CAFile:         cfg.enterpriseCAFile,
-		ClientCertFile: cfg.enterpriseClientCert,
-		ClientKeyFile:  cfg.enterpriseClientKey,
-		ServerName:     cfg.enterpriseServerName,
-	})
-	if err != nil {
-		slog.Error("Enterprise service authentication unavailable; Community remains active", "error", err)
-		a.Enterprise = nil
-	}
-	keyring, err := licensing.DefaultKeyring()
-	if err != nil {
-		a.Close()
-		return nil, err
-	}
-	timeFloor, err := a.advanceLicenseTimeFloor(ctx)
-	if err != nil {
-		a.Close()
-		return nil, err
-	}
-	a.licenseClock = licensing.NewTimeGuard(timeFloor)
-	verifier := licensing.Verifier{
-		Keys:           keyring,
-		DeploymentMode: cfg.deploymentMode,
-		InstallationID: a.InstallationID,
-		TimeGuard:      a.licenseClock,
-	}
-	licenseDocument, evaluation := licensing.LoadDocument(cfg.enterpriseLicensePath, verifier)
-	a.Entitlements = entitlements.New(licensing.Provider{
-		Community:  entitlements.CommunityProvider{Mode: cfg.deploymentMode},
-		Evaluation: evaluation,
-		License:    licenseDocument,
-		Verifier:   &verifier,
-	})
-	if evaluation.Status != entitlements.StatusCommunity {
-		slog.Info("Enterprise license evaluated", "status", evaluation.Status, "reason", evaluation.Reason)
-	}
-	a.startLicenseClockPersistence()
+	a.Entitlements = entitlements.New(entitlements.CommunityProvider{Mode: cfg.deploymentMode})
 	if err = a.bootstrap(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -167,9 +122,6 @@ func (a *App) Close() {
 	if a.backgroundStop != nil {
 		a.backgroundStop()
 		a.backgroundWG.Wait()
-	}
-	if a.Enterprise != nil {
-		_ = a.Enterprise.Close()
 	}
 	a.DB.Close()
 	a.Redis.Close()

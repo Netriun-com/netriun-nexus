@@ -33,6 +33,13 @@ clients can read the sanitized edition, feature decisions, and current
 workspace limit usage from `GET /api/v1/entitlements`. Product limits and
 premium capability decisions are enforced separately from workspace RBAC.
 
+All installations currently use Community entitlements while licensing moves to
+the external Netriun Commercial Platform. Nexus no longer loads offline licenses
+or connects to the Enterprise service; old `ENTERPRISE_*` and
+`SPIFFE_ENDPOINT_SOCKET` settings are ignored. Administrator-only
+`GET /api/v1/installation` returns `installation_id`, `deployment_mode`,
+`edition`, and `license_status`; the edition and license status are `community`.
+
 The sidebar keeps cloud scope explicit: select one active provider, then select one or more accounts from that provider. Cloud services are loaded for the active provider and grouped by capability. Workspace administration and product documentation—including the API reference—have separate navigation sections. Multi-account inventory API calls use a comma-separated `account_ids` query value; selected IDs must be accessible and belong to the same provider.
 
 ```sh

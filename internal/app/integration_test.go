@@ -54,10 +54,6 @@ func TestIntegration(t *testing.T) {
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("DEPLOYMENT_MODE", "self_hosted")
 	t.Setenv("APP_ORIGIN", "http://localhost:8080")
-	// Enterprise authentication/configuration failures must not prevent
-	// Community startup or readiness.
-	t.Setenv("ENTERPRISE_SERVICE_URL", "https://enterprise.invalid")
-	t.Setenv("ENTERPRISE_AUTH_MODE", "files")
 	ctx := context.Background()
 	a, err := New(ctx)
 	if err != nil {
@@ -66,19 +62,12 @@ func TestIntegration(t *testing.T) {
 	mailer := &fakeMailer{}
 	a.Mailer = mailer
 	defer a.Close()
-	if a.Enterprise != nil {
-		t.Fatal("misconfigured optional Enterprise service was enabled")
-	}
 	if !strings.HasPrefix(a.InstallationID, "ins_") {
 		t.Fatalf("stable installation ID was not created: %q", a.InstallationID)
 	}
 	firstInstallationID := a.InstallationID
 	if repeated, repeatErr := a.ensureInstallationID(ctx); repeatErr != nil || repeated != firstInstallationID {
 		t.Fatalf("installation ID changed across initialization: first=%q repeated=%q err=%v", firstInstallationID, repeated, repeatErr)
-	}
-	var licenseTimeFloor time.Time
-	if err = a.DB.QueryRow(ctx, "SELECT license_time_floor FROM installation_identity WHERE singleton=true").Scan(&licenseTimeFloor); err != nil || licenseTimeFloor.IsZero() {
-		t.Fatalf("persistent license time floor was not initialized: floor=%v err=%v", licenseTimeFloor, err)
 	}
 	var snapshotTable, legacyInterval bool
 	if err = a.DB.QueryRow(ctx, "SELECT to_regclass('service_snapshots') IS NOT NULL").Scan(&snapshotTable); err != nil || !snapshotTable {
@@ -158,11 +147,16 @@ func TestIntegration(t *testing.T) {
 	}
 	request("GET", "/api/v1/instances", "", nil, 401)
 	request("GET", "/api/v1/entitlements", "", nil, 401)
+	request("GET", "/api/v1/installation", "", nil, 401)
 	request("POST", "/api/v1/accounts/test", "", map[string]string{"provider": "aws"}, 401)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "testadmin@example.com", "password": "wrong"}, 401)
 	adminToken := login("testadmin@example.com", "Test-admin-password1!")
 	installation := request("GET", "/api/v1/installation", adminToken, nil, 200)
-	if !strings.Contains(installation.Body.String(), firstInstallationID) || !strings.Contains(installation.Body.String(), `"license_status":"community"`) {
+	var installationFields map[string]string
+	if err := json.Unmarshal(installation.Body.Bytes(), &installationFields); err != nil {
+		t.Fatal(err)
+	}
+	if len(installationFields) != 4 || installationFields["installation_id"] != firstInstallationID || installationFields["deployment_mode"] != "self_hosted" || installationFields["edition"] != "community" || installationFields["license_status"] != "community" {
 		t.Fatalf("unexpected installation status: %s", installation.Body.String())
 	}
 	proveConnection := func(email, provider string, credentials Credentials) {
@@ -266,6 +260,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("cross-workspace audit data leaked")
 	}
 	viewer := login("viewer@example.com", "Viewer-password1!")
+	request("GET", "/api/v1/installation", viewer, nil, 403)
 	adminEntitlements := request("GET", "/api/v1/entitlements", adminToken, nil, 200)
 	viewerEntitlements := request("GET", "/api/v1/entitlements", viewer, nil, 200)
 	for _, response := range []*httptest.ResponseRecorder{adminEntitlements, viewerEntitlements} {

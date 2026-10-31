@@ -228,7 +228,7 @@
         "summary": "Read the stable installation identity and license status",
         "responses": {
           "200": {
-            "description": "Installation identity for offline license issuance; administrators only",
+            "description": "Stable installation identity and Community runtime status; administrators only",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/InstallationStatus" }
@@ -2475,12 +2475,10 @@
         "properties": {
           "installation_id": { "type": "string", "pattern": "^ins_[A-Za-z0-9_-]+$" },
           "deployment_mode": { "type": "string", "enum": ["cloud", "self_hosted"] },
-          "edition": { "type": "string", "enum": ["community", "enterprise"] },
-          "license_status": { "type": "string", "enum": ["community", "licensed", "grace", "expired", "invalid"] },
-          "license": { "type": ["object", "null"] },
-          "enterprise_service_configured": { "type": "boolean" }
+          "edition": { "type": "string", "enum": ["community"] },
+          "license_status": { "type": "string", "enum": ["community"] }
         },
-        "required": ["installation_id", "deployment_mode", "edition", "license_status", "enterprise_service_configured"]
+        "required": ["installation_id", "deployment_mode", "edition", "license_status"]
       }
     }
   }
