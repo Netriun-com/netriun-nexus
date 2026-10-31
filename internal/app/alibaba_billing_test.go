@@ -33,15 +33,55 @@ func TestRequestedBillingServices(t *testing.T) {
 	}
 }
 
+// billingCycleTestMonth supplies calendar-month fixtures to TestValidBillingCycle.
+func billingCycleTestMonth(now time.Time, offset int) string {
+	now = now.UTC()
+	current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return current.AddDate(0, offset, 0).Format("2006-01")
+}
+
+func TestBillingCycleTestMonth(t *testing.T) {
+	tests := []struct {
+		reference, previous, current, next, oldest, expired string
+	}{
+		{"2026-10-31T12:00:00Z", "2026-09", "2026-10", "2026-11", "2025-05", "2025-04"},
+		{"2026-03-31T12:00:00Z", "2026-02", "2026-03", "2026-04", "2024-10", "2024-09"},
+		{"2026-01-31T12:00:00Z", "2025-12", "2026-01", "2026-02", "2024-08", "2024-07"},
+		// The reference month is UTC even when the supplied date has another offset.
+		{"2026-10-31T23:30:00-02:00", "2026-10", "2026-11", "2026-12", "2025-06", "2025-05"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.reference, func(t *testing.T) {
+			now, err := time.Parse(time.RFC3339, tt.reference)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, month := range []struct {
+				offset int
+				want   string
+			}{{-1, tt.previous}, {0, tt.current}, {1, tt.next}, {-17, tt.oldest}, {-18, tt.expired}} {
+				if got := billingCycleTestMonth(now, month.offset); got != month.want {
+					t.Errorf("offset %d: got %s, want %s", month.offset, got, month.want)
+				}
+			}
+		})
+	}
+}
+
 func TestValidBillingCycle(t *testing.T) {
 	now := time.Now().UTC()
-	if !validBillingCycle(now.AddDate(0, -1, 0).Format("2006-01")) {
+	for _, offset := range []int{0, -17} {
+		if !validBillingCycle(billingCycleTestMonth(now, offset)) {
+			t.Errorf("billing month at offset %d must be valid", offset)
+		}
+	}
+	if !validBillingCycle(billingCycleTestMonth(now, -1)) {
 		t.Fatal("previous month must be valid")
 	}
-	if validBillingCycle(now.AddDate(0, 1, 0).Format("2006-01")) {
+	if validBillingCycle(billingCycleTestMonth(now, 1)) {
 		t.Fatal("future month must be invalid")
 	}
-	if validBillingCycle(now.AddDate(0, -18, 0).Format("2006-01")) {
+	if validBillingCycle(billingCycleTestMonth(now, -18)) {
 		t.Fatal("a month older than the latest 18 cycles must be invalid")
 	}
 	if validBillingCycle("2026-13") || validBillingCycle("not-a-month") {
