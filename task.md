@@ -1,7 +1,7 @@
 # Current tasks
 
-Phase: **1 — Stabilize** and **2 — Extract licensing** (see [docs/roadmap.md](docs/roadmap.md)).
-Written: 2026-10-30. Baseline: `main` at `0929f6a`.
+Phase: **2 — Extract licensing** (T8 left) and **3 — Durable jobs and sync** (see [docs/roadmap.md](docs/roadmap.md)).
+Written: 2026-10-30 (phases 1–2), 2026-11-09 (phase 3).
 
 Read first: [docs/spec-v2.md](docs/spec-v2.md) and
 [docs/architecture-v2.md](docs/architecture-v2.md).
@@ -252,7 +252,167 @@ files; `LICENSE.md` and `NOTICE` still describe the AGPL boundary correctly.
 
 ---
 
+## Phase 3 — Durable jobs and sync
+
+Goal (from [docs/roadmap.md](docs/roadmap.md)): pages never trigger sync, a
+background scheduler keeps data fresh, jobs survive restarts, and one large
+account cannot delay others. Design: [docs/architecture-v2.md](docs/architecture-v2.md)
+("Data model", "Sync engine", "Code layout").
+
+Order: T9 can run any time. T10 → T11 → T12 → T13 → T14 → T15 in order; each
+builds on the previous one. T16 can run after T12.
+
+Rules for this phase, in addition to "Rules for every task":
+
+- Every new table is added by a new numbered migration in
+  `internal/app/migrations/`. Never edit an existing migration.
+- New SQL goes into a store layer (`internal/jobs`, `internal/sync`), not into
+  HTTP handlers.
+- Keep existing HTTP routes and response shapes working until the UI no
+  longer uses them. If a response changes, update `docs/openapi.json`.
+- Every behavior change has a test against PostgreSQL (the CI integration
+  setup), not only unit tests with fakes.
+
+### T9. CI hygiene: run the frontend tests and fix the legacy migration test
+
+Why: `scripts/test-navigation.cjs` (34 tests from PR #5 and PR #8) does not run
+in CI, and `cmd/migrate-legacy`'s opt-in test reads a file that no longer
+exists (`internal/app/schema.sql`), as found in PR #2.
+
+Work:
+
+1. Add a CI step that runs `node --test scripts/test-navigation.cjs` with a
+   pinned Node version and a SHA-pinned setup action, like the other actions
+   in `.github/workflows/ci.yml`.
+2. Fix `cmd/migrate-legacy/main_test.go` so it builds its schema from the
+   current migrations instead of `internal/app/schema.sql`. Keep the test
+   opt-in (`TEST_MIGRATION_DATABASE_URL`).
+
+Acceptance: the CI log shows the 34 navigation tests running; the legacy test
+passes locally against an isolated database.
+
+### T10. Add the durable job queue (`jobs` table and `internal/jobs`)
+
+Work:
+
+1. Migration: `jobs` table with at least `id`, `kind`, `payload` (JSONB),
+   `status` (`queued`, `running`, `succeeded`, `failed`), `priority`,
+   `attempts`, `max_attempts`, `run_after`, `locked_by`, `locked_until`,
+   `concurrency_key`, `dedupe_key` (unique while queued or running),
+   `last_error`, `created_at`, `updated_at`. Index for claiming due jobs.
+2. Package `internal/jobs` with: `Enqueue` (returns the existing job when the
+   same `dedupe_key` is already queued or running), `Claim` using
+   `FOR UPDATE SKIP LOCKED` that respects per-`concurrency_key` limits,
+   lease renewal, `Complete`, `Fail` (exponential backoff until
+   `max_attempts`), and reclaiming jobs whose lease expired.
+3. No caller uses it yet. No HTTP changes.
+
+Acceptance (tests against PostgreSQL):
+
+- Two concurrent claimers never get the same job.
+- A job whose worker stops renewing its lease is picked up by another claimer.
+- A concurrency key with limit N never has more than N running jobs.
+- Duplicate `Enqueue` with the same `dedupe_key` returns the same job.
+- Failed jobs back off and stop after `max_attempts`.
+
+### T11. Add the `nexus worker` role
+
+Work:
+
+1. `cmd/nexus` accepts a role: `serve` (HTTP only), `worker` (job loop only),
+   or `all` (both). Default is `all`, so current installs keep working
+   unchanged. Choose flag or environment variable and document it.
+2. The worker runs a pool of goroutines that claim and run jobs from T10 by
+   `kind`, with a registry of handlers. Graceful shutdown on SIGTERM stops
+   claiming, lets running jobs finish within a timeout, then releases leases.
+3. Compose keeps one combined container. The Helm chart gets an option to run
+   a separate worker Deployment (off by default).
+4. Health: `/readyz` for `serve`; a simple liveness signal for `worker`.
+
+Acceptance: a test job kind runs in `all` and in separate `serve` + `worker`
+processes; killing the worker mid-job leads to the job being re-run after the
+lease expires; Helm lint and template pass with the worker option on and off.
+
+### T12. Add `sync_state` and the scheduler
+
+Work:
+
+1. Migration: `sync_state` with one row per account + service + region and
+   `interval`, `last_started_at`, `last_success_at`, `last_error`,
+   `last_error_code`, `next_due_at`, `empty` (no resources found last time).
+2. Rows are created and removed when accounts are added, deleted, or their
+   region selection changes, and for every service the provider supports
+   today (compute for all four providers; EDS desktops, EDS users, OSS, and
+   security groups for Alibaba).
+3. A scheduler loop in the worker enqueues one sync job per due row, with a
+   `dedupe_key` per row, so a row never has two jobs. Default intervals from
+   the architecture: instances and desktops 5 minutes; security groups 15
+   minutes; buckets 60 minutes; regions marked empty 6 hours.
+4. In this task the sync job handlers only call today's existing collection
+   code for that account, service, and region. Moving the code is T13 and T14.
+
+Acceptance: with the worker running and no browser open, every enabled row is
+synced on schedule; empty regions move to the 6-hour interval; stopping and
+starting the worker does not lose or duplicate scheduled work.
+
+### T13. Move compute inventory refresh onto the queue
+
+Work:
+
+1. Compute sync becomes one job per account + region (job kind for example
+   `sync.compute`), using the existing provider collectors and reconciliation
+   (failed regions keep their previous rows).
+2. `POST /api/v1/inventory/refresh` enqueues high-priority jobs for the
+   selected accounts and returns a job id the existing status endpoint can
+   report on; the response shape stays compatible with the current UI.
+3. Errors are written to `sync_state` and `cloud_accounts.sync_error` with a
+   fresh context, not the job's possibly cancelled context.
+4. Remove the Valkey-based inventory job runner in `refresh_jobs.go` and the
+   global `accountSlots`/`regionSlots` once nothing uses them.
+
+Acceptance: a refresh survives a server restart; one slow account does not
+delay another account's refresh (test with a fake slow provider); existing
+inventory integration tests still pass.
+
+### T14. Move EDS, OSS, and security group refresh onto the queue
+
+Same pattern as T13 for `eds_refresh.go`, OSS, and security groups: one job per
+account + service + region, existing refresh endpoints enqueue high-priority
+jobs and keep their response shapes, errors go to `sync_state`. Remove the old
+in-process runners when unused.
+
+Acceptance: as in T13, for each of the three services.
+
+### T15. Pages stop triggering sync
+
+Work:
+
+1. In `internal/app/web/app.js`, page navigation and scope changes never start
+   a refresh. Only the refresh button and the post-action follow-ups from
+   PR #8 do.
+2. Each list shows "last synced" and any per-region error from `sync_state`
+   (add a small read endpoint if needed, documented in `docs/openapi.json`).
+3. Update `scripts/test-navigation.cjs` for the new rule.
+
+Acceptance: opening any page sends no refresh request; data still becomes fresh
+on its own within its interval; the README and in-app docs describe the
+scheduler accurately.
+
+### T16. Run audit retention as a scheduled job
+
+Why: audit deletion only runs at the end of `collectAccounts`
+(`internal/app/collector.go`), so with no refreshes, retention never runs.
+
+Work: a daily job per workspace that deletes audit records older than
+`audit_retention_days`, scheduled by the T12 scheduler; remove the deletion
+from `collectAccounts`.
+
+Acceptance: integration test shows old audit rows are removed by the job and
+not by a refresh.
+
+---
+
 ## Next
 
-When phases 1 and 2 are done, Claude writes the phase 3 tasks (durable jobs,
-`sync_state`, scheduler, `nexus worker`) here for review before work starts.
+When phase 3 is done, Claude writes the phase 4 tasks (one `resources` model
+and `/api/v1/resources`) here for review before work starts.
