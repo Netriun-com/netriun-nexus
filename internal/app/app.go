@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netriun/nexus/internal/entitlements"
+	"github.com/netriun/nexus/internal/entitlements/commercialplatform"
 	"github.com/netriun/nexus/internal/secure"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -111,7 +112,7 @@ func New(ctx context.Context) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	a.Entitlements = entitlements.New(entitlements.CommunityProvider{Mode: cfg.deploymentMode})
+	a.Entitlements = entitlements.New(commercialplatform.Provider{Mode: cfg.deploymentMode})
 	if err = a.bootstrap(ctx); err != nil {
 		a.Close()
 		return nil, err
