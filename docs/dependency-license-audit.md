@@ -2,6 +2,7 @@
 
 Audit date: 2026-10-07
 T1 dependency update reviewed: 2026-10-30
+x/net security update reviewed: 2026-11-12
 Scope: modules linked by `go list -deps ./cmd/...`, repository assets, and
 declared build/runtime container images. This is an engineering compatibility
 review, not legal advice.
@@ -51,6 +52,21 @@ The Excelize pin requires `mscfb v1.0.8` and `efp v0.0.2`. Excelize and
 `x/sync v0.23.0`. These are module-graph requirements, not independent upgrades.
 The graph also advances the unlinked `x/image`, `x/mod`, `x/term`, and `x/tools`
 modules; none enters the shipped commands or changes the linked license counts.
+
+## x/net security update review (2026-11-12)
+
+`golang.org/x/net` advances from v0.60.0 to v0.62.0 to fix
+[CVE-2026-78661](https://pkg.go.dev/vuln/GO-2026-6860).
+Its module requirements make `go mod tidy` advance `x/crypto` from v0.57.0
+to v0.58.0, `x/sys` from v0.48.0 to v0.49.0, and `x/text` from v0.42.0
+to v0.43.0. The new `x/text` requires `x/sync` v0.24.0 (previously v0.23.0).
+These five modules' root LICENSE files are byte-for-byte unchanged and remain
+BSD-3-Clause. No module was added or removed by this update.
+
+The selected module graph also advances `x/term` from v0.46.0 to v0.47.0
+(required by `x/net` and `x/crypto`) and `x/tools` from v0.49.0 to v0.51.0
+(required by `x/text`). Neither is added to `go.mod` or linked into the shipped
+commands. No other module version changes.
 
 ## Linked Go module inventory
 
@@ -103,12 +119,12 @@ modules; none enters the shipped commands or changes the linked license counts.
 - `github.com/xuri/efp v0.0.2`
 - `github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2`
 - `github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9`
-- `golang.org/x/crypto v0.57.0`
-- `golang.org/x/net v0.60.0`
+- `golang.org/x/crypto v0.58.0`
+- `golang.org/x/net v0.62.0`
 - `golang.org/x/oauth2 v0.37.0`
-- `golang.org/x/sync v0.23.0`
-- `golang.org/x/sys v0.48.0`
-- `golang.org/x/text v0.42.0`
+- `golang.org/x/sync v0.24.0`
+- `golang.org/x/sys v0.49.0`
+- `golang.org/x/text v0.43.0`
 - `golang.org/x/time v0.4.0`
 - `google.golang.org/protobuf v1.36.12`
 
