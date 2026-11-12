@@ -23,9 +23,9 @@ The previous milestone plan (M0 to M10) is archived in
 
 | Phase | Goal | Fixes | Status |
 | --- | --- | --- | --- |
-| 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | **Current** |
-| 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | Can run in parallel with phase 1 |
-| 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | Next |
+| 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | Done (T5 branch protection pending) |
+| 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | In progress (T8 left) |
+| 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | **Current** (tasks written) |
 | 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | Planned |
 | 5. Live updates | SSE stream, row patches | Full page re-render | Planned |
 | 6. Frontend rebuild | React + TypeScript + Vite UI on a typed client | 167KB single-file UI | Planned |
