@@ -2,7 +2,7 @@
 
 Audit date: 2026-10-07
 T1 dependency update reviewed: 2026-10-30
-x/net security update reviewed: 2026-11-12
+x/net and Excelize security updates reviewed: 2026-11-12
 Scope: modules linked by `go list -deps ./cmd/...`, repository assets, and
 declared build/runtime container images. This is an engineering compatibility
 review, not legal advice.
@@ -37,14 +37,14 @@ byte-for-byte unchanged except `github.com/xuri/efp`, whose copyright year
 advances from 2025 to 2026 without changing its BSD-3-Clause terms. The license
 bundle was regenerated successfully with `scripts/collect-third-party-licenses.sh`.
 
-Excelize is temporarily pinned to
+At the T1 review, Excelize was temporarily pinned to
 `v2.11.1-0.20261003002531-6258dcebc4e2` from upstream's default `master` branch.
 Its BSD-3-Clause license is unchanged from v2.11.0. No newer tagged release
 was available at review time. This is the newest fix listed by the
 [baseline image scan](https://github.com/Netriun-com/netriun-nexus/actions/runs/41074600321/job/124128352696),
 and the [upstream changes since v2.11.0](https://github.com/qax-os/excelize/compare/v2.11.0...6258dcebc4e2a2aed985c38a08098dfd908521d1)
-include the earlier listed security fixes. Replace this temporary pin when a
-tagged release contains all of these fixes and passes the image scan.
+include the earlier listed security fixes. The tagged v2.11.1 release replaces
+this pin in the 2026-11-12 update documented below.
 
 The Excelize pin requires `mscfb v1.0.8` and `efp v0.0.2`. Excelize and
 `x/net v0.60.0` require `x/crypto v0.57.0` and `x/text v0.42.0`;
@@ -66,7 +66,23 @@ BSD-3-Clause. No module was added or removed by this update.
 The selected module graph also advances `x/term` from v0.46.0 to v0.47.0
 (required by `x/net` and `x/crypto`) and `x/tools` from v0.49.0 to v0.51.0
 (required by `x/text`). Neither is added to `go.mod` or linked into the shipped
-commands. No other module version changes.
+commands. No other module version changes were required by the x/net update.
+
+## Excelize tagged release review (2026-11-12)
+
+The temporary Excelize pseudo-version is replaced with tagged `v2.11.1` to fix
+CVE-2026-107223, as documented in the
+[upstream release notes](https://xuri.me/excelize/en/releases/v2.11.1.html).
+Its root LICENSE is byte-for-byte unchanged from the previous pin and explicitly
+identifies the BSD 3-Clause License.
+
+`go get github.com/xuri/excelize/v2@v2.11.1` followed by `go mod tidy` also
+advances `github.com/richardlehane/mscfb` from v1.0.8 to v1.0.9 and
+`github.com/xuri/efp` from v0.0.2 to
+v0.0.3-0.20260924042702-217b81952dec, as required by Excelize's go.mod.
+Their root license files are byte-for-byte unchanged (Apache-2.0 and
+BSD-3-Clause, respectively). No other module version changes were required by
+this follow-up, and no module was added or removed.
 
 ## Linked Go module inventory
 
@@ -98,7 +114,7 @@ commands. No other module version changes.
 - `github.com/mattermost/xml-roundtrip-validator v0.1.0`
 - `github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd`
 - `github.com/modern-go/reflect2 v1.0.2`
-- `github.com/richardlehane/mscfb v1.0.8`
+- `github.com/richardlehane/mscfb v1.0.9`
 - `github.com/richardlehane/msoleps v1.0.6`
 - `github.com/russellhaering/goxmldsig v1.6.0`
 - `github.com/spiffe/go-spiffe/v2 v2.9.0`
@@ -116,8 +132,8 @@ commands. No other module version changes.
 
 ### BSD-3-Clause
 
-- `github.com/xuri/efp v0.0.2`
-- `github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2`
+- `github.com/xuri/efp v0.0.3-0.20260924042702-217b81952dec`
+- `github.com/xuri/excelize/v2 v2.11.1`
 - `github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9`
 - `golang.org/x/crypto v0.58.0`
 - `golang.org/x/net v0.62.0`
