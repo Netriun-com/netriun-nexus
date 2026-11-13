@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/netriun/nexus/internal/cloud"
+	syncer "github.com/netriun/nexus/internal/sync"
 )
 
 type fakeMailer struct {
@@ -186,6 +187,10 @@ func TestIntegration(t *testing.T) {
 	account1, account2 := acct("Account A", group1), acct("Account B", group2)
 	proveConnection("testadmin@example.com", "alibaba", Credentials{AccessKey: "LTAI-test", SecretKey: "alibaba-secret"})
 	alibabaAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Alibaba Production", "provider": "alibaba", "owner": "Platform", "group_id": group2, "regions": []string{"cn-hangzhou", "ap-southeast-1"}, "credentials": map[string]string{"access_key_id": "LTAI-test", "secret_access_key": "alibaba-secret"}}, 200))
+	var syncRows int
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1", alibabaAccount).Scan(&syncRows); err != nil || syncRows != 7 {
+		t.Fatalf("account save did not reconcile sync scopes: rows=%d err=%v", syncRows, err)
+	}
 	var alibabaProvider, alibabaCipher string
 	if err = a.DB.QueryRow(ctx, "SELECT provider,credentials FROM cloud_accounts WHERE id=$1", alibabaAccount).Scan(&alibabaProvider, &alibabaCipher); err != nil || alibabaProvider != "alibaba" || strings.Contains(alibabaCipher, "alibaba-secret") {
 		t.Fatalf("Alibaba connection was not stored safely: provider=%q err=%v", alibabaProvider, err)
@@ -297,6 +302,28 @@ func TestIntegration(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("expected two instances across selected AWS accounts, got %d", len(list.Data))
 	}
+	t.Run("scheduled compute retries a skipped legacy collection", func(t *testing.T) {
+		// A newer account timestamp makes the legacy lock skip its callback
+		// after the other holder releases it. No provider API should be called.
+		if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=clock_timestamp()+interval '1 hour' WHERE id=$1", account1); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=NULL WHERE id=$1", account1); err != nil {
+				t.Error(err)
+			}
+		})
+		key := fmt.Sprintf("collector:lock:%d:compute:%d", workspaceID, account1)
+		if err := a.Redis.Set(ctx, key, "other-collector", 100*time.Millisecond).Err(); err != nil {
+			t.Fatal(err)
+		}
+		deadline, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		_, err := a.CollectScheduled(deadline, syncer.Payload{WorkspaceID: workspaceID, AccountID: account1, Service: syncer.Compute, Region: "us-east-1"}, syncer.Account{Provider: "aws"})
+		if err == nil || err.Error() != "Collection deferred after concurrent refresh" {
+			t.Fatalf("skipped collection must retry: %v", err)
+		}
+	})
 	t.Run("instance snapshot freshness", func(t *testing.T) {
 		oldest := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Second)
 		newest := oldest.Add(8 * time.Minute)

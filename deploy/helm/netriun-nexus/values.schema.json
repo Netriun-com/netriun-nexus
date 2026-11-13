@@ -3,6 +3,20 @@
   "type": "object",
   "required": ["image", "config", "existingSecret"],
   "properties": {
+    "sync": {
+      "type": "object",
+      "properties": {
+        "computeIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "desktopsIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "usersIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "securityGroupsIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "bucketsIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "emptyIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "tickIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "reconcileIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "jobRetentionSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
     "replicaCount": { "type": "integer", "minimum": 1 },
     "worker": {
       "type": "object",

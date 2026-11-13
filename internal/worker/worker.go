@@ -35,20 +35,27 @@ func DefaultConfig() Config {
 }
 
 type Worker struct {
-	queue    *jobs.Queue
-	handlers Registry
-	kinds    []string
-	config   Config
-	id       string
-	alive    atomic.Bool
-	started  atomic.Bool
+	queue      *jobs.Queue
+	handlers   Registry
+	kinds      []string
+	config     Config
+	id         string
+	alive      atomic.Bool
+	started    atomic.Bool
+	background []func(context.Context)
 }
 
-func New(queue *jobs.Queue, handlers Registry, config Config) (*Worker, error) {
+func New(queue *jobs.Queue, handlers Registry, config Config, background ...func(context.Context)) (*Worker, error) {
 	if queue == nil || config.Concurrency < 1 || config.Lease < 3*time.Millisecond || config.PollInterval <= 0 || config.ShutdownTimeout <= 0 {
 		return nil, errors.New("worker: positive concurrency, lease, poll interval and shutdown timeout required")
 	}
 	w := &Worker{queue: queue, handlers: Registry{}, config: config, id: rand.Text()}
+	for _, loop := range background {
+		if loop == nil {
+			return nil, errors.New("worker: nil background loop")
+		}
+		w.background = append(w.background, loop)
+	}
 	for kind, handler := range handlers {
 		if kind == "" || handler == nil {
 			return nil, errors.New("worker: empty kind or nil handler")
@@ -73,6 +80,9 @@ func (w *Worker) Run(ctx context.Context) error {
 	w.alive.Store(true)
 	defer w.alive.Store(false)
 	var wg sync.WaitGroup
+	for _, loop := range w.background {
+		wg.Go(func() { loop(ctx) })
+	}
 	for i := range w.config.Concurrency {
 		wg.Go(func() { w.loop(ctx, work, fmt.Sprintf("%s/%d", w.id, i)) })
 	}

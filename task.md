@@ -321,6 +321,8 @@ Acceptance (tests against PostgreSQL):
 
 ### T11. Add the `nexus worker` role
 
+- [x] Done — merged in [PR #14](https://github.com/Netriun-com/netriun-nexus/pull/14).
+
 Work:
 
 1. `cmd/nexus` accepts a role: `serve` (HTTP only), `worker` (job loop only),
@@ -338,6 +340,8 @@ processes; killing the worker mid-job leads to the job being re-run after the
 lease expires; Helm lint and template pass with the worker option on and off.
 
 ### T12. Add `sync_state` and the scheduler
+
+- [x] Implemented in this PR, including the approved account-wide `*` scopes until T14.
 
 Work:
 

@@ -72,9 +72,9 @@ controls its resource requests/limits. Both modes share these settings:
 
 Per-key limits apply across all worker processes and must match between replicas.
 Each job has one key, so account and provider scopes are separate limits rather
-than hierarchical limits on the same job. Unknown kinds remain queued; this
-release adds no production handlers or scheduler. Existing refresh systems stay
-in the HTTP application until their later migration tasks.
+than hierarchical limits on the same job. Unknown kinds remain queued. Scheduled
+sync runs in worker/all roles, using existing collectors; manual refresh systems
+stay in the HTTP application until their later migration tasks.
 
 Worker startup, liveness, and readiness probes use `GET /healthz` on its pod's
 HTTP port. It reports whether the worker runtime is active, not whether the
@@ -91,6 +91,40 @@ The chart requires `terminationGracePeriodSeconds` to be at least
 `max(15, worker.shutdownTimeoutSeconds) + 5` (default 30). The HTTP shutdown and
 worker drain budgets run concurrently. See the [runtime documentation](../../../README.md#process-roles-and-durable-workers)
 for handler requirements and retry behavior.
+
+## Scheduled collection settings
+
+Workers now need DATABASE_URL, REDIS_URL, and ENCRYPTION_KEY from the existing
+Secret. They keep the legacy collectors' Valkey locks so scheduled and HTTP
+refreshes coordinate. The scheduler never runs in serve mode.
+
+All `sync` values are positive integer seconds, rendered as Go durations:
+
+| Helm value | Environment variable | Default seconds |
+| --- | --- | --- |
+| `sync.computeIntervalSeconds` | `NEXUS_SYNC_COMPUTE_INTERVAL` | 300 |
+| `sync.desktopsIntervalSeconds` | `NEXUS_SYNC_DESKTOPS_INTERVAL` | 300 |
+| `sync.usersIntervalSeconds` | `NEXUS_SYNC_USERS_INTERVAL` | 300 |
+| `sync.securityGroupsIntervalSeconds` | `NEXUS_SYNC_SECURITY_GROUPS_INTERVAL` | 900 |
+| `sync.bucketsIntervalSeconds` | `NEXUS_SYNC_BUCKETS_INTERVAL` | 3600 |
+| `sync.emptyIntervalSeconds` | `NEXUS_SYNC_EMPTY_INTERVAL` | 21600 |
+| `sync.tickIntervalSeconds` | `NEXUS_SYNC_TICK_INTERVAL` | 10 |
+| `sync.reconcileIntervalSeconds` | `NEXUS_SYNC_RECONCILE_INTERVAL` | 60 |
+| `sync.jobRetentionSeconds` | `NEXUS_JOB_RETENTION` | 604800 |
+
+Use the same settings for web/account saves and every worker replica. The `*`
+region sentinel denotes account-wide Azure/GCP compute and Alibaba OSS, security
+groups, and EDS users. These scopes retain their service interval and never use
+the six-hour empty-region delay. AWS/Alibaba compute and EDS desktops have
+regional rows; all-region accounts need successful worker region discovery.
+Reconciliation backfills existing accounts after upgrade and preserves disabled
+rows. Cleanup deletes only old terminal jobs, in batches of 500.
+
+TODO(T14): replace Alibaba account-wide rows once collectors are regional.
+EDS users may also refresh desktops, but does not update desktop sync_state rows.
+The existing HTTP/Valkey refresh paths and UI behavior remain unchanged. See
+[scheduled sync](../../../README.md#scheduled-sync) for deduplication, ownership,
+error handling, empty-region behavior, and transitional snapshot limitations.
 
 Render and inspect without deploying:
 
