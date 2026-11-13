@@ -45,6 +45,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: NEXUS_ROLE
+              value: {{ ternary "serve" "all" .Values.worker.enabled | quote }}
           envFrom:
             - configMapRef:
                 name: {{ include "netriun-nexus.fullname" . }}

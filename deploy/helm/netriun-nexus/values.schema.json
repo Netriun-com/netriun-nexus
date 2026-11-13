@@ -4,6 +4,19 @@
   "required": ["image", "config", "existingSecret"],
   "properties": {
     "replicaCount": { "type": "integer", "minimum": 1 },
+    "worker": {
+      "type": "object",
+      "required": ["enabled", "replicaCount", "concurrency", "accountConcurrency", "providerConcurrency", "shutdownTimeoutSeconds", "resources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "concurrency": { "type": "integer", "minimum": 1 },
+        "accountConcurrency": { "type": "integer", "minimum": 1 },
+        "providerConcurrency": { "type": "integer", "minimum": 1 },
+        "shutdownTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "resources": { "type": "object" }
+      }
+    },
     "image": {
       "type": "object",
       "required": ["repository", "tag", "pullPolicy"],

@@ -170,6 +170,33 @@ func TestConcurrentClaims(t *testing.T) {
 	noClaim(t, q)
 }
 
+func TestClaimKindsAndScopeLimits(t *testing.T) {
+	q := testQueue(t, map[string]int{"account:*": 2, "provider:*": 3, "account:special": 1})
+	for _, key := range []string{"account:123", "provider:aws", "account:special"} {
+		for range 5 {
+			enqueue(t, q, Params{Kind: "supported", ConcurrencyKey: key})
+		}
+	}
+	unknown := enqueue(t, q, Params{Kind: "future", Priority: 100})
+	counts := map[string]int{}
+	for {
+		j, err := q.Claim(t.Context(), "worker", time.Minute, "supported")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if j == nil {
+			break
+		}
+		counts[j.ConcurrencyKey]++
+	}
+	if counts["account:123"] != 2 || counts["provider:aws"] != 3 || counts["account:special"] != 1 {
+		t.Fatalf("namespace/exact limits: %v", counts)
+	}
+	if j := readJob(t, q, unknown.ID); j.Status != "queued" || j.Attempts != 0 {
+		t.Fatalf("unknown kind consumed: %+v", j)
+	}
+}
+
 func TestConcurrencyLimits(t *testing.T) {
 	q := testQueue(t, map[string]int{"account-a": 3})
 	for range 24 {

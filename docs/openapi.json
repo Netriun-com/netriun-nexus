@@ -19,6 +19,18 @@
     }
   ],
   "paths": {
+    "/healthz": {
+      "servers": [{"url": "/"}],
+      "get": {
+        "summary": "Process liveness (HTTP_ADDR)",
+        "description": "In serve/all roles, checks the HTTP process. In worker role, this is the only route and checks that the worker runtime is active; it does not check database or provider readiness. Worker role returns 503 while stopping. Worker pods use this endpoint for startup and liveness probes and are not selected by the web Service.",
+        "security": [],
+        "responses": {
+          "200": {"description": "Alive; JSON status is ok"},
+          "503": {"description": "Worker runtime is stopping; JSON status is stopping"}
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "summary": "Sign in; returns token, user, expires_in and session cookie",

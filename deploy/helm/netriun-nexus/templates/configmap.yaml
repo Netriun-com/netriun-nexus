@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
+{{- if lt (int .Values.terminationGracePeriodSeconds) (int (add 5 (max 15 .Values.worker.shutdownTimeoutSeconds))) }}
+{{- fail "terminationGracePeriodSeconds must be at least max(15, worker.shutdownTimeoutSeconds) + 5" }}
+{{- end }}
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,6 +11,10 @@ metadata:
   labels:
     {{- include "netriun-nexus.labels" . | nindent 4 }}
 data:
+  NEXUS_WORKERS: {{ .Values.worker.concurrency | quote }}
+  NEXUS_ACCOUNT_CONCURRENCY: {{ .Values.worker.accountConcurrency | quote }}
+  NEXUS_PROVIDER_CONCURRENCY: {{ .Values.worker.providerConcurrency | quote }}
+  NEXUS_SHUTDOWN_TIMEOUT: {{ printf "%ds" (int .Values.worker.shutdownTimeoutSeconds) | quote }}
   HTTP_ADDR: ":8080"
   DEPLOYMENT_MODE: {{ .Values.config.deploymentMode | quote }}
   APP_ORIGIN: {{ required "config.appOrigin is required" .Values.config.appOrigin | quote }}

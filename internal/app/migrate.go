@@ -9,10 +9,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (a *App) migrate(ctx context.Context) error {
-	tx, err := a.DB.Begin(ctx)
+	return Migrate(ctx, a.DB)
+}
+
+// Migrate applies the embedded schema for both the HTTP application and workers.
+// The advisory lock serializes startup of separate processes.
+func Migrate(ctx context.Context, db *pgxpool.Pool) error {
+	tx, err := db.Begin(ctx)
 	if err != nil {
 		return err
 	}
