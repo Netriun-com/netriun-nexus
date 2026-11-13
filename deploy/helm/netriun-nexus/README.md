@@ -46,6 +46,52 @@ T8 moves that legacy deployment artifact to the shared licensing project. They
 do not configure a Nexus runtime client. The legacy mTLS Compose example is
 also retained for that extraction and is no longer a supported Nexus override.
 
+## Process roles and optional worker Deployment
+
+`worker.enabled` defaults to `false`: the existing Deployment uses
+`NEXUS_ROLE=all` and runs HTTP plus the durable worker pool. With
+`worker.enabled=true`, that Deployment uses `NEXUS_ROLE=serve` and a separate
+`-worker` Deployment uses `NEXUS_ROLE=worker`. The runtime rejects any other
+role; outside Helm, an unset role defaults to `all`. Compose remains combined.
+
+```sh
+helm lint deploy/helm/netriun-nexus --set worker.enabled=true
+helm template nexus deploy/helm/netriun-nexus --set worker.enabled=true
+```
+
+The worker uses the same image, ConfigMap, Secret, service account, and pod
+security settings. `worker.replicaCount` defaults to 1 and `worker.resources`
+controls its resource requests/limits. Both modes share these settings:
+
+| Helm value | Runtime variable | Default |
+| --- | --- | --- |
+| `worker.concurrency` | `NEXUS_WORKERS` | `8` goroutines per process |
+| `worker.accountConcurrency` | `NEXUS_ACCOUNT_CONCURRENCY` | `2` jobs per `account:<id>` key |
+| `worker.providerConcurrency` | `NEXUS_PROVIDER_CONCURRENCY` | `4` jobs per `provider:<name>` key |
+| `worker.shutdownTimeoutSeconds` | `NEXUS_SHUTDOWN_TIMEOUT` | `15` seconds |
+
+Per-key limits apply across all worker processes and must match between replicas.
+Each job has one key, so account and provider scopes are separate limits rather
+than hierarchical limits on the same job. Unknown kinds remain queued; this
+release adds no production handlers or scheduler. Existing refresh systems stay
+in the HTTP application until their later migration tasks.
+
+Worker startup, liveness, and readiness probes use `GET /healthz` on its pod's
+HTTP port. It reports whether the worker runtime is active, not whether the
+database or cloud providers are reachable. The worker has no application API or
+`/readyz`. The web Deployment retains its existing `/readyz` and `/healthz`
+probes. Worker pods use a distinct name label so the existing immutable web
+selector, Service, and web PodDisruptionBudget do not select them; enabling or
+disabling the worker does not change the web Deployment selector.
+
+SIGTERM stops claims and allows active handlers to finish for the configured
+drain timeout. Leases are renewed every 10s with a 30s lifetime. At the drain
+deadline renewal stops, leaving unfinished jobs for recovery after lease expiry.
+The chart requires `terminationGracePeriodSeconds` to be at least
+`max(15, worker.shutdownTimeoutSeconds) + 5` (default 30). The HTTP shutdown and
+worker drain budgets run concurrently. See the [runtime documentation](../../../README.md#process-roles-and-durable-workers)
+for handler requirements and retry behavior.
+
 Render and inspect without deploying:
 
 ```sh

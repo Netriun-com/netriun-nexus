@@ -11,7 +11,9 @@
 // leases retry immediately, or become failed if their attempts are exhausted.
 //
 // Nonempty concurrency keys default to one running job across all workers;
-// New accepts per-key overrides. Every worker must use the same limits. Empty
+// New accepts per-key overrides. Every worker must use the same limits.
+// Keys of the form "account:123" can also match an "account:*" limit; exact
+// overrides take precedence over these namespace limits. Empty
 // keys are unconstrained. Claim skips locked rows and busy/full keys; callers
 // should poll again after nil. Database time governs scheduling and leases.
 // This package does not start workers or call providers.
@@ -22,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -120,8 +123,9 @@ func (q *Queue) Enqueue(ctx context.Context, p Params) (*Job, error) {
 		p.Kind, p.Payload, p.Priority, p.MaxAttempts, due, p.ConcurrencyKey, p.DedupeKey))
 }
 
-// Claim reserves at most one job. Lease must be at least one microsecond.
-func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration) (*Job, error) {
+// Claim reserves at most one job, optionally restricted to the supplied kinds.
+// No kinds means all kinds. Lease must be at least one microsecond.
+func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, kinds ...string) (*Job, error) {
 	if worker == "" || lease < time.Microsecond {
 		return nil, errors.New("jobs: worker and positive lease required")
 	}
@@ -134,13 +138,17 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration) (
 	}
 	defer tx.Rollback(context.Background())
 	excluded := []string{}
+	if kinds == nil {
+		kinds = []string{}
+	}
 	for {
 		var id int64
 		var key string
 		err = tx.QueryRow(ctx, `SELECT id, concurrency_key FROM jobs
             WHERE status = 'queued' AND run_after <= clock_timestamp() AND attempts < max_attempts
+                AND (cardinality($2::text[]) = 0 OR kind = ANY($2))
                 AND NOT (concurrency_key = ANY($1::text[]))
-            ORDER BY priority DESC, run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED`, excluded).Scan(&id, &key)
+            ORDER BY priority DESC, run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED`, excluded, kinds).Scan(&id, &key)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
@@ -160,6 +168,11 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration) (
 				continue
 			}
 			limit := 1
+			if namespace, _, ok := strings.Cut(key, ":"); ok {
+				if n, found := q.limits[namespace+":*"]; found {
+					limit = n
+				}
+			}
 			if n, ok := q.limits[key]; ok {
 				limit = n
 			}

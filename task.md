@@ -295,6 +295,8 @@ passes locally against an isolated database.
 
 ### T10. Add the durable job queue (`jobs` table and `internal/jobs`)
 
+- [x] Done — merged in [PR #13](https://github.com/Netriun-com/netriun-nexus/pull/13).
+
 Work:
 
 1. Migration: `jobs` table with at least `id`, `kind`, `payload` (JSONB),

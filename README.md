@@ -150,6 +150,59 @@ Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided
 
 ## Operation and limitations
 
+### Process roles and durable workers
+
+`NEXUS_ROLE` accepts `serve`, `worker`, or `all` (the default). Invalid roles
+fail startup. `serve` runs the existing HTTP application with `/readyz` checking
+PostgreSQL and Valkey. `worker` runs only the durable job runtime and a small
+`GET /healthz` listener on `HTTP_ADDR` (default `:8080`); it does not expose the
+application API or `/readyz`. `all` runs both in one process. Compose explicitly
+keeps one `all` container. Use different HTTP_ADDR ports when running separate
+processes on the same host.
+
+```sh
+NEXUS_ROLE=serve HTTP_ADDR=:8080 ./bin/nexus
+NEXUS_ROLE=worker HTTP_ADDR=:8081 ./bin/nexus
+```
+
+Standalone workers currently require only `DATABASE_URL`. They apply the same
+transactional migrations without initializing HTTP sessions, SMTP, or the
+bootstrap administrator; `serve`/`all` retain the existing application settings.
+Production job handlers and scheduled sync arrive in subsequent tasks. Until
+then the registry is empty and workers leave jobs queued. Existing page/button
+refresh systems continue to run as before.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `NEXUS_WORKERS` | `8` | Maximum active handlers in each process |
+| `NEXUS_ACCOUNT_CONCURRENCY` | `2` | Running jobs per `account:<id>` key across workers |
+| `NEXUS_PROVIDER_CONCURRENCY` | `4` | Running jobs per `provider:<name>` key across workers |
+| `NEXUS_SHUTDOWN_TIMEOUT` | `15s` | Time to drain handlers after SIGTERM/SIGINT |
+
+Counts must be positive integers and the shutdown timeout a positive Go duration.
+All workers sharing the queue must use the same per-key limits. Each job has one
+concurrency key: account and provider keys are separate scopes, not simultaneous
+hierarchical limits on one job. Other nonempty keys retain the queue's default
+limit of one; empty keys are limited by the process pool only.
+
+Workers poll every 500ms, lease jobs for 30s, and renew every 10s while a handler
+runs. Only registered kinds are claimed. Successful handlers complete jobs;
+errors and panics use the queue's bounded retries. Handlers must honor their
+context, be safe to run again, and return errors without secrets. On SIGTERM,
+claims stop immediately and lease renewal continues during the drain interval.
+At its deadline, handlers are cancelled and renewal stops; unfinished jobs stay
+durable and become claimable after lease expiry. A lost or uncertain lease also
+cancels the handler. A crash may repeat work, so delivery is at least once.
+
+Worker `/healthz` reports runtime liveness (200 while active, 503 while stopping),
+not database/provider readiness. Kubernetes should probe it on the worker pod's
+HTTP port, without a public Service. Set termination grace to at least
+`max(15s, NEXUS_SHUTDOWN_TIMEOUT) + 5s`; the HTTP server has its own 15s shutdown
+budget, running concurrently with worker drain. See the
+[Helm chart README](deploy/helm/netriun-nexus/README.md) for separate Deployments.
+
+### HTTP operation
+
 For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to the exact HTTPS origin, and set `COOKIE_SECURE=true`. Keep the application port private. `/healthz` checks the process; `/readyz` checks PostgreSQL and Valkey. Application logs go to stdout; Docker rotates them. Audit retention is independent of application log retention.
 
 The application ignores forwarded client-IP headers by default. When running behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to the proxy address or network (comma-separated) so login rate limiting uses the original client IP. Trust only networks controlled by your deployment; for example, a local proxy can use `127.0.0.1/32`.

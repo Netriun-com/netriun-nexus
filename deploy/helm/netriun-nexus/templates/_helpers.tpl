@@ -36,3 +36,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{- define "netriun-nexus.workerFullname" -}}
+{{- printf "%s-worker" (include "netriun-nexus.fullname" . | trunc 56 | trimSuffix "-") }}
+{{- end }}
+
+{{/* A distinct name label avoids overlapping the existing immutable web selector. */}}
+{{- define "netriun-nexus.workerSelectorLabels" -}}
+app.kubernetes.io/name: {{ printf "%s-worker" (include "netriun-nexus.name" . | trunc 56 | trimSuffix "-") }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
