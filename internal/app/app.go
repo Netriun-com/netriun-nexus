@@ -23,6 +23,7 @@ import (
 	"github.com/netriun/nexus/internal/entitlements"
 	"github.com/netriun/nexus/internal/entitlements/commercialplatform"
 	"github.com/netriun/nexus/internal/secure"
+	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -31,6 +32,7 @@ import (
 var assets embed.FS
 
 type App struct {
+	Sync                       *syncer.Store
 	DB                         *pgxpool.Pool
 	Redis                      *redis.Client
 	Vault                      *secure.Vault
@@ -67,6 +69,10 @@ const userKey contextKey = "user"
 
 func current(r *http.Request) User { return r.Context().Value(userKey).(User) }
 func New(ctx context.Context) (*App, error) {
+	syncConfig, err := syncer.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
 	cfg, err := loadRuntimeConfig()
 	if err != nil {
 		return nil, err
@@ -99,6 +105,7 @@ func New(ctx context.Context) (*App, error) {
 	backgroundCtx, backgroundStop := context.WithCancel(context.Background())
 	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, accountSlots: make(chan struct{}, 4), regionSlots: make(chan struct{}, 6)}
 	a.Policy = &PolicyEngine{DB: db}
+	a.Sync = syncer.New(db, syncConfig)
 	a.refreshRunner = a.collectAccounts
 	a.edsRefreshRunner = a.refreshEDSService
 	a.ossRefreshRunner = a.collectOSSBuckets

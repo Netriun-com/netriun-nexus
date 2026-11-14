@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
 
@@ -17,10 +18,16 @@ type config struct {
 	worker        worker.Config
 	accountLimit  int
 	providerLimit int
+	sync          syncer.Config
 }
 
 func loadConfig() (config, error) {
 	c := config{role: os.Getenv("NEXUS_ROLE"), address: os.Getenv("HTTP_ADDR"), worker: worker.DefaultConfig(), accountLimit: 2, providerLimit: 4}
+	var err error
+	c.sync, err = syncer.LoadConfig()
+	if err != nil {
+		return c, err
+	}
 	if c.role == "" {
 		c.role = "all"
 	}

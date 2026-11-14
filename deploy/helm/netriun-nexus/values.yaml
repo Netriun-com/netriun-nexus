@@ -2,6 +2,18 @@
 
 replicaCount: 1
 
+# Scheduler runs only in worker/all roles. All replicas must share these settings.
+sync:
+  computeIntervalSeconds: 300
+  desktopsIntervalSeconds: 300
+  usersIntervalSeconds: 300
+  securityGroupsIntervalSeconds: 900
+  bucketsIntervalSeconds: 3600
+  emptyIntervalSeconds: 21600
+  tickIntervalSeconds: 10
+  reconcileIntervalSeconds: 60
+  jobRetentionSeconds: 604800
+
 # These limits also configure the combined Deployment when enabled is false.
 worker:
   enabled: false

@@ -11,6 +11,15 @@ metadata:
   labels:
     {{- include "netriun-nexus.labels" . | nindent 4 }}
 data:
+  NEXUS_SYNC_COMPUTE_INTERVAL: {{ printf "%ds" (int .Values.sync.computeIntervalSeconds) | quote }}
+  NEXUS_SYNC_DESKTOPS_INTERVAL: {{ printf "%ds" (int .Values.sync.desktopsIntervalSeconds) | quote }}
+  NEXUS_SYNC_USERS_INTERVAL: {{ printf "%ds" (int .Values.sync.usersIntervalSeconds) | quote }}
+  NEXUS_SYNC_SECURITY_GROUPS_INTERVAL: {{ printf "%ds" (int .Values.sync.securityGroupsIntervalSeconds) | quote }}
+  NEXUS_SYNC_BUCKETS_INTERVAL: {{ printf "%ds" (int .Values.sync.bucketsIntervalSeconds) | quote }}
+  NEXUS_SYNC_EMPTY_INTERVAL: {{ printf "%ds" (int .Values.sync.emptyIntervalSeconds) | quote }}
+  NEXUS_SYNC_TICK_INTERVAL: {{ printf "%ds" (int .Values.sync.tickIntervalSeconds) | quote }}
+  NEXUS_SYNC_RECONCILE_INTERVAL: {{ printf "%ds" (int .Values.sync.reconcileIntervalSeconds) | quote }}
+  NEXUS_JOB_RETENTION: {{ printf "%ds" (int .Values.sync.jobRetentionSeconds) | quote }}
   NEXUS_WORKERS: {{ .Values.worker.concurrency | quote }}
   NEXUS_ACCOUNT_CONCURRENCY: {{ .Values.worker.accountConcurrency | quote }}
   NEXUS_PROVIDER_CONCURRENCY: {{ .Values.worker.providerConcurrency | quote }}

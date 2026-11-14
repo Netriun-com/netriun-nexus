@@ -156,6 +156,11 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 			err = tx.QueryRow(r.Context(), "INSERT INTO cloud_accounts(workspace_id,name,provider,owner,group_id,credentials,regions) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id", current(r).WorkspaceID, in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions).Scan(&id)
 		}
 		if err == nil {
+			if a.Sync != nil {
+				err = a.Sync.ReconcileAccountTx(r.Context(), tx, id)
+			}
+		}
+		if err == nil {
 			err = tx.Commit(r.Context())
 		}
 	} else {
@@ -168,6 +173,14 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(r.Context(), "UPDATE cloud_accounts SET name=$1,provider=$2,owner=$3,group_id=$4,credentials=$5,regions=$6,last_sync_at=CASE WHEN $9 THEN NULL ELSE last_sync_at END,sync_error=CASE WHEN $9 THEN '' ELSE sync_error END,sync_error_code=CASE WHEN $9 THEN '' ELSE sync_error_code END WHERE id=$7 AND workspace_id=$8", in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions, id, current(r).WorkspaceID, credentialsChanged)
 		if err == nil && existingProvider != in.Provider {
 			_, err = tx.Exec(r.Context(), "DELETE FROM instances WHERE account_id=$1", id)
+			if err == nil && a.Sync != nil {
+				err = a.Sync.ResetAccountTx(r.Context(), tx, id)
+			}
+		}
+		if err == nil {
+			if a.Sync != nil {
+				err = a.Sync.ReconcileAccountTx(r.Context(), tx, id)
+			}
 		}
 		if err == nil {
 			err = tx.Commit(r.Context())

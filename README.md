@@ -63,7 +63,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Snapshot-first Alibaba OSS bucket inventory with metadata, usage statistics, search/sort/filter, list/visual modes, and private bucket creation.
 - Snapshot-first Alibaba ECS security groups with attached-instance visibility, list/visual modes, rule inspection, and audited ingress/egress rule creation and deletion.
 - Guided AWS, Alibaba Cloud, Azure and Google Cloud connection setup with a required live credential and compute-access test before saving.
-- Collection across explicitly selected or all enabled regions when a service page opens a missing or older-than-five-minute snapshot, or an explicit refresh or user action requests it. A periodic scheduler is planned for phase 3 of the [roadmap](docs/roadmap.md).
+- Collection across explicitly selected or all enabled regions when a service page opens a missing or older-than-five-minute snapshot, or an explicit refresh or user action requests it. A durable worker scheduler also refreshes scopes without a browser; see [scheduled sync](#scheduled-sync).
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
@@ -165,12 +165,12 @@ NEXUS_ROLE=serve HTTP_ADDR=:8080 ./bin/nexus
 NEXUS_ROLE=worker HTTP_ADDR=:8081 ./bin/nexus
 ```
 
-Standalone workers currently require only `DATABASE_URL`. They apply the same
+Standalone workers require `DATABASE_URL`, `REDIS_URL`, and `ENCRYPTION_KEY`
+for scheduled collectors and their existing Valkey locks. They apply the same
 transactional migrations without initializing HTTP sessions, SMTP, or the
 bootstrap administrator; `serve`/`all` retain the existing application settings.
-Production job handlers and scheduled sync arrive in subsequent tasks. Until
-then the registry is empty and workers leave jobs queued. Existing page/button
-refresh systems continue to run as before.
+Scheduled collection runs in worker/all roles. Existing page/button refresh
+systems continue to run as before.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
@@ -200,6 +200,60 @@ HTTP port, without a public Service. Set termination grace to at least
 `max(15s, NEXUS_SHUTDOWN_TIMEOUT) + 5s`; the HTTP server has its own 15s shutdown
 budget, running concurrently with worker drain. See the
 [Helm chart README](deploy/helm/netriun-nexus/README.md) for separate Deployments.
+
+### Scheduled sync
+
+Workers maintain `sync_state` and enqueue durable `scheduled.sync` jobs without
+any browser activity. Defaults are configurable as Go durations of at least 1s;
+use the same values in all processes. Compose passes these settings through.
+
+| Environment variable | Default | Scope |
+| --- | --- | --- |
+| `NEXUS_SYNC_COMPUTE_INTERVAL` | `5m` | Compute inventory |
+| `NEXUS_SYNC_DESKTOPS_INTERVAL` | `5m` | EDS desktops |
+| `NEXUS_SYNC_USERS_INTERVAL` | `5m` | EDS users |
+| `NEXUS_SYNC_SECURITY_GROUPS_INTERVAL` | `15m` | Security groups |
+| `NEXUS_SYNC_BUCKETS_INTERVAL` | `1h` | OSS buckets |
+| `NEXUS_SYNC_EMPTY_INTERVAL` | `6h` | Successful empty regional scopes only |
+| `NEXUS_SYNC_TICK_INTERVAL` | `10s` | Due-job polling, up to 100 scopes per tick |
+| `NEXUS_SYNC_RECONCILE_INTERVAL` | `1m` | Account reconciliation and retention cleanup |
+| `NEXUS_JOB_RETENTION` | `168h` | Terminal job retention (7 days) |
+
+AWS/Alibaba compute and EDS desktops use per-region rows. Explicit selections
+are reconciled in the account-save transaction; for “all regions,” worker
+maintenance discovers regions with the existing provider APIs. After upgrade,
+maintenance also backfills existing accounts. Failed discovery preserves known
+rows; new regional accounts need successful discovery before their first sync.
+Discovery runs separately from due-job polling. Account deletion cascades rows;
+region changes remove obsolete regional scopes. Disabled rows remain disabled.
+
+The region sentinel `*` means a whole-account collector: Azure/GCP compute,
+Alibaba OSS, security groups, and EDS users. These rows retain their identities
+when region selections change, keep their service interval even when empty, and
+never set the regional `empty` flag. TODO(T14): replace Alibaba `*` rows when
+collectors become regional. EDS users may refresh desktop snapshots as an
+existing side effect; only its own users row records that job's outcome.
+
+Jobs carry workspace_id, account_id, service, region, and the state-row ID.
+The key is `sync:<account_id>:<service>:<region>` and concurrency is
+`account:<account_id>`. Due-row locks plus transactional enqueue and active-key
+uniqueness prevent duplicate jobs across replicas. Deleted/recreated scopes and
+stale attempts cannot update newer scope metadata. Future HTTP job-status reads
+(T13) must authorize the payload's workspace_id: jobs has no workspace column.
+
+Successful regional emptiness selects the six-hour interval; nonempty results
+restore the service interval. Failures retain the last successful data, record
+safe error text/code using a fresh three-second context, and use queue retries.
+After attempts are exhausted the scope becomes due again at its service
+interval. Known partial snapshots are failures. Cleanup removes at most 500
+succeeded/failed jobs per maintenance pass based on their last update time;
+queued/running jobs are retained regardless of age.
+
+Collectors and their Valkey coordination remain unchanged. The current UI and
+manual HTTP refresh runners are not moved to the durable queue in this task.
+Regional desktop sync does not rebuild the all-region desktop snapshot; current
+EDS users/manual collectors still do that. Snapshot freshness shown by the
+legacy UI is not yet driven by sync_state (T13–T15).
 
 ### HTTP operation
 

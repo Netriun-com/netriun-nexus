@@ -99,6 +99,17 @@ func scan(row pgx.Row) (*Job, error) {
 }
 
 func (q *Queue) Enqueue(ctx context.Context, p Params) (*Job, error) {
+	return enqueueJob(ctx, q.db, p)
+}
+
+// EnqueueTx atomically adds a job alongside scheduling state in the caller's transaction.
+func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, p Params) (*Job, error) {
+	return enqueueJob(ctx, tx, p)
+}
+
+func enqueueJob(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, p Params) (*Job, error) {
 	if p.Kind == "" || p.MaxAttempts < 0 {
 		return nil, errors.New("jobs: kind and positive max attempts required")
 	}
@@ -115,12 +126,26 @@ func (q *Queue) Enqueue(ctx context.Context, p Params) (*Job, error) {
 	if !p.RunAfter.IsZero() {
 		due = p.RunAfter
 	}
-	return scan(q.db.QueryRow(ctx, `INSERT INTO jobs
+	return scan(db.QueryRow(ctx, `INSERT INTO jobs
         (kind, payload, priority, max_attempts, run_after, concurrency_key, dedupe_key)
         VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, clock_timestamp()), $6, NULLIF($7, ''))
         ON CONFLICT (dedupe_key) WHERE status IN ('queued', 'running')
         DO UPDATE SET dedupe_key = jobs.dedupe_key RETURNING `+columns,
 		p.Kind, p.Payload, p.Priority, p.MaxAttempts, due, p.ConcurrencyKey, p.DedupeKey))
+}
+
+// Cleanup removes one bounded batch of terminal jobs, using database time and
+// completion/update time rather than enqueue time. Active jobs are never deleted.
+func (q *Queue) Cleanup(ctx context.Context, retention time.Duration, batch int) (int64, error) {
+	if retention <= 0 || batch < 1 {
+		return 0, errors.New("jobs: positive retention and batch required")
+	}
+	tag, err := q.db.Exec(ctx, `WITH expired AS (
+        SELECT id FROM jobs WHERE status IN ('succeeded', 'failed')
+            AND updated_at < clock_timestamp() - $1::bigint * interval '1 microsecond'
+        ORDER BY updated_at, id LIMIT $2 FOR UPDATE SKIP LOCKED
+    ) DELETE FROM jobs WHERE id IN (SELECT id FROM expired)`, retention.Microseconds(), batch)
+	return tag.RowsAffected(), err
 }
 
 // Claim reserves at most one job, optionally restricted to the supplied kinds.

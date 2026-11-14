@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netriun/nexus/internal/app"
 	"github.com/netriun/nexus/internal/jobs"
+	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
 
@@ -34,8 +35,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Production handlers arrive with T12; unknown kinds stay queued meanwhile.
-	return runService(ctx, cfg, worker.Registry{})
+	return runService(ctx, cfg, nil)
 }
 
 func runService(parent context.Context, cfg config, handlers worker.Registry) error {
@@ -69,15 +69,30 @@ func runService(parent context.Context, cfg config, handlers worker.Registry) er
 		defer a.Close()
 		db, handler = a.DB, a.Handler()
 	}
-	cancel()
 	var runner *worker.Worker
 	var workerDone chan error
 	if cfg.role != "serve" {
+		store := syncer.New(db, cfg.sync)
+		discover := syncer.Discovery(func(context.Context, syncer.Account) map[string][]string { return nil })
+		if handlers == nil {
+			collector, err := app.NewCollector(startup, db, cfg.sync)
+			if err != nil {
+				return err
+			}
+			defer collector.Redis.Close()
+			discover = collector.DiscoverSyncRegions
+			handlers = worker.Registry{syncer.JobKind: store.Handler(collector.CollectScheduled)}
+		}
+		var background []func(context.Context)
+		if _, scheduled := handlers[syncer.JobKind]; scheduled {
+			scheduler := syncer.Scheduler{Store: store, Reconcile: func(ctx context.Context) error { return store.Reconcile(ctx, discover) }}
+			background = append(background, scheduler.Run)
+		}
 		queue, err := jobs.New(db, map[string]int{"account:*": cfg.accountLimit, "provider:*": cfg.providerLimit})
 		if err != nil {
 			return err
 		}
-		runner, err = worker.New(queue, handlers, cfg.worker)
+		runner, err = worker.New(queue, handlers, cfg.worker, background...)
 		if err != nil {
 			return err
 		}
@@ -95,6 +110,7 @@ func runService(parent context.Context, cfg config, handlers worker.Registry) er
 			handler = mux
 		}
 	}
+	cancel()
 	listener, err := net.Listen("tcp", cfg.address)
 	if err != nil {
 		return err

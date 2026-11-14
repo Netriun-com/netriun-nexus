@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netriun/nexus/internal/app"
 	"github.com/netriun/nexus/internal/jobs"
+	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
 
@@ -122,6 +123,19 @@ func TestNexusProcess(t *testing.T) {
 	}}
 	if os.Getenv("NEXUS_TEST_EMPTY_REGISTRY") == "1" {
 		handlers = worker.Registry{}
+	}
+	if os.Getenv("NEXUS_TEST_SCHEDULER") == "1" {
+		cfg.sync.Tick, cfg.sync.Reconcile = 20*time.Millisecond, 40*time.Millisecond
+		db, err := pgxpool.New(t.Context(), os.Getenv("DATABASE_URL"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		store := syncer.New(db, cfg.sync)
+		handlers = worker.Registry{syncer.JobKind: store.Handler(func(ctx context.Context, _ syncer.Payload, _ syncer.Account) (bool, error) { return false, ctx.Err() })}
+	}
+	if os.Getenv("NEXUS_TEST_PRODUCTION_REGISTRY") == "1" {
+		handlers = nil
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -476,4 +490,61 @@ func TestWorkerDispatchAndLimits(t *testing.T) {
 		t.Fatal("empty registry consumed work")
 	}
 	empty.stop(t, syscall.SIGTERM)
+}
+
+func TestScheduledRoleProcesses(t *testing.T) {
+	for _, role := range []string{"serve", "worker", "all"} {
+		t.Run(role, func(t *testing.T) {
+			db, _, dsn := database(t)
+			p := startProcess(t, dsn, role, "1s", "NEXUS_TEST_SCHEDULER=1")
+			var workspace, account int64
+			if err := db.QueryRow(t.Context(), "INSERT INTO workspaces(name,slug) VALUES('Scheduled test','scheduled-test') RETURNING id").Scan(&workspace); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(t.Context(), `INSERT INTO cloud_accounts(workspace_id,name,provider,credentials,regions) VALUES($1,'Scheduled','aws','test-placeholder',ARRAY['us-east-1']) RETURNING id`, workspace).Scan(&account); err != nil {
+				t.Fatal(err)
+			}
+			if role == "serve" {
+				time.Sleep(200 * time.Millisecond)
+				var n int
+				if err := db.QueryRow(t.Context(), "SELECT count(*) FROM sync_state").Scan(&n); err != nil {
+					t.Fatal(err)
+				}
+				if n != 0 {
+					t.Fatal("serve ran scheduler")
+				}
+				p.stop(t, syscall.SIGTERM)
+				return
+			}
+			eventually(t, func() bool {
+				var n int
+				if err := db.QueryRow(t.Context(), "SELECT count(*) FROM sync_state WHERE account_id=$1 AND last_success_at IS NOT NULL", account).Scan(&n); err != nil {
+					t.Fatal(err)
+				}
+				return n == 1
+			})
+			p.stop(t, syscall.SIGTERM)
+			if _, err := db.Exec(t.Context(), "UPDATE sync_state SET next_due_at=now()-interval '1 second' WHERE account_id=$1", account); err != nil {
+				t.Fatal(err)
+			}
+			replacement := startProcess(t, dsn, role, "1s", "NEXUS_TEST_SCHEDULER=1")
+			eventually(t, func() bool {
+				var n int
+				if err := db.QueryRow(t.Context(), "SELECT count(*) FROM jobs WHERE status='succeeded' AND payload->>'account_id'=$1", fmt.Sprint(account)).Scan(&n); err != nil {
+					t.Fatal(err)
+				}
+				return n == 2
+			})
+			replacement.stop(t, syscall.SIGTERM)
+		})
+	}
+}
+
+func TestWorkerWithScheduledCollectors(t *testing.T) {
+	_, _, dsn := database(t) // empty account set: no live provider requests
+	p := startProcess(t, dsn, "worker", "1s", "NEXUS_TEST_PRODUCTION_REGISTRY=1", "SMTP_HOST=")
+	if status(p.address, "/healthz") != 200 {
+		t.Fatal("production collector startup failed")
+	}
+	p.stop(t, syscall.SIGTERM)
 }
