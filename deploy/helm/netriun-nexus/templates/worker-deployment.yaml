@@ -49,6 +49,7 @@ spec:
           env:
             - name: NEXUS_ROLE
               value: "worker"
+          # The shared Secret may include REDIS_URL; worker mode does not use it.
           envFrom:
             - configMapRef:
                 name: {{ include "netriun-nexus.fullname" . }}

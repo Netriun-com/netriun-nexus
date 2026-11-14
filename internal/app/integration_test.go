@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -189,7 +190,7 @@ func TestIntegration(t *testing.T) {
 	proveConnection("testadmin@example.com", "alibaba", Credentials{AccessKey: "LTAI-test", SecretKey: "alibaba-secret"})
 	alibabaAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Alibaba Production", "provider": "alibaba", "owner": "Platform", "group_id": group2, "regions": []string{"cn-hangzhou", "ap-southeast-1"}, "credentials": map[string]string{"access_key_id": "LTAI-test", "secret_access_key": "alibaba-secret"}}, 200))
 	var syncRows int
-	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1", alibabaAccount).Scan(&syncRows); err != nil || syncRows != 7 {
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1", alibabaAccount).Scan(&syncRows); err != nil || syncRows != 9 {
 		t.Fatalf("account save did not reconcile sync scopes: rows=%d err=%v", syncRows, err)
 	}
 	var alibabaProvider, alibabaCipher string
@@ -424,13 +425,13 @@ func TestIntegration(t *testing.T) {
 	if !strings.Contains(emptyEDS.Body.String(), `"snapshot":false`) {
 		t.Fatalf("missing EDS snapshot did not return immediately: %s", emptyEDS.Body.String())
 	}
-	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.regions", "", map[string]any{"data": []map[string]any{{"id": "cn-hangzhou", "name": "Hangzhou", "desktops": 1, "available": true}}, "total_desktops": 1}); err != nil {
+	if err = seedServiceSnapshot(ctx, a, workspaceID, alibabaAccount, "eds.regions", "", map[string]any{"data": []map[string]any{{"id": "cn-hangzhou", "name": "Hangzhou", "desktops": 1, "available": true}}, "total_desktops": 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.desktops", "all", map[string]any{"data": []map[string]any{{"DesktopId": "ecd-test", "RegionId": "cn-hangzhou"}}, "failed_regions": []string{}}); err != nil {
+	if err = seedServiceSnapshot(ctx, a, workspaceID, alibabaAccount, "eds.desktops", "all", map[string]any{"data": []map[string]any{{"DesktopId": "ecd-test", "RegionId": "cn-hangzhou"}}, "failed_regions": []string{}}); err != nil {
 		t.Fatal(err)
 	}
-	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.users", "cn-hangzhou", map[string]any{"data": []map[string]any{{"EndUserId": "test_user"}}}); err != nil {
+	if err = seedServiceSnapshot(ctx, a, workspaceID, alibabaAccount, "eds.users", "cn-hangzhou", map[string]any{"data": []map[string]any{{"EndUserId": "test_user"}}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
@@ -444,16 +445,17 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 	edsStarted, releaseEDS := make(chan struct{}), make(chan struct{})
-	a.edsRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64, service, targetRegion string) error {
-		if gotWorkspace != workspaceID || gotAccount != alibabaAccount || service != "users" || targetRegion != "cn-hangzhou" {
+	edsHandler := func(runCtx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
+		gotWorkspace, gotAccount, service, targetRegion := p.WorkspaceID, p.AccountID, strings.TrimPrefix(p.Service, "eds."), p.Region
+		if gotWorkspace != workspaceID || gotAccount != alibabaAccount || service != "users" || targetRegion != "cn-shanghai" {
 			t.Errorf("unexpected EDS refresh scope: workspace=%d account=%d service=%s region=%s", gotWorkspace, gotAccount, service, targetRegion)
 		}
 		close(edsStarted)
 		select {
 		case <-releaseEDS:
-			return nil
+			return false, nil
 		case <-runCtx.Done():
-			return runCtx.Err()
+			return false, runCtx.Err()
 		}
 	}
 	queuedEDS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
@@ -461,6 +463,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(queuedEDS.Body.Bytes(), &edsJob) != nil || edsJob.ID == "" || edsJob.Status != "queued" {
 		t.Fatalf("EDS refresh was not queued: %s", queuedEDS.Body.String())
 	}
+	stopEDS := startServiceTestWorker(t, a, edsHandler)
 	select {
 	case <-edsStarted:
 	case <-time.After(2 * time.Second):
@@ -471,6 +474,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(coalescedEDS.Body.Bytes(), &sameEDSJob) != nil || sameEDSJob.ID != edsJob.ID {
 		t.Fatalf("duplicate EDS refresh was not coalesced: %s", coalescedEDS.Body.String())
 	}
+	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh/%s", alibabaAccount, edsJob.ID), secondOwner, nil, 404)
 	close(releaseEDS)
 	deadline = time.Now().Add(2 * time.Second)
 	for {
@@ -486,14 +490,14 @@ func TestIntegration(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	a.edsRefreshRunner = a.refreshEDSService
+	stopEDS()
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=all", alibabaAccount), adminToken, map[string]any{}, 400)
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", account1), adminToken, nil, 400)
 	emptyOSS := request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, nil, 200)
 	if !strings.Contains(emptyOSS.Body.String(), `"snapshot":false`) {
 		t.Fatalf("missing OSS snapshot did not return immediately: %s", emptyOSS.Body.String())
 	}
-	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "oss.buckets", "", map[string]any{"data": []map[string]any{{"name": "nexus-test-bucket", "region": "cn-hangzhou", "status": "available", "storage_bytes": 1024, "object_count": 2}}, "failed_buckets": []string{}}); err != nil {
+	if err = seedServiceSnapshot(ctx, a, workspaceID, alibabaAccount, "oss.buckets", "", map[string]any{"data": []map[string]any{{"name": "nexus-test-bucket", "region": "cn-hangzhou", "status": "available", "storage_bytes": 1024, "object_count": 2}}, "failed_buckets": []string{}}); err != nil {
 		t.Fatal(err)
 	}
 	ossSnapshot := request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, nil, 200)
@@ -501,16 +505,17 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("OSS snapshot was not returned: %s", ossSnapshot.Body.String())
 	}
 	ossStarted, releaseOSS := make(chan struct{}), make(chan struct{})
-	a.ossRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64) error {
+	ossHandler := func(runCtx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
+		gotWorkspace, gotAccount := p.WorkspaceID, p.AccountID
 		if gotWorkspace != workspaceID || gotAccount != alibabaAccount {
 			t.Errorf("unexpected OSS refresh scope: workspace=%d account=%d", gotWorkspace, gotAccount)
 		}
 		close(ossStarted)
 		select {
 		case <-releaseOSS:
-			return nil
+			return false, nil
 		case <-runCtx.Done():
-			return runCtx.Err()
+			return false, runCtx.Err()
 		}
 	}
 	queuedOSS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
@@ -518,6 +523,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(queuedOSS.Body.Bytes(), &ossJob) != nil || ossJob.ID == "" || ossJob.Status != "queued" {
 		t.Fatalf("OSS refresh was not queued: %s", queuedOSS.Body.String())
 	}
+	stopOSS := startServiceTestWorker(t, a, ossHandler)
 	select {
 	case <-ossStarted:
 	case <-time.After(2 * time.Second):
@@ -528,6 +534,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(coalescedOSS.Body.Bytes(), &sameOSSJob) != nil || sameOSSJob.ID != ossJob.ID {
 		t.Fatalf("duplicate OSS refresh was not coalesced: %s", coalescedOSS.Body.String())
 	}
+	request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/refresh/%s", alibabaAccount, ossJob.ID), secondOwner, nil, 404)
 	close(releaseOSS)
 	deadline = time.Now().Add(2 * time.Second)
 	for {
@@ -543,7 +550,7 @@ func TestIntegration(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	a.ossRefreshRunner = a.collectOSSBuckets
+	stopOSS()
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, map[string]any{"name": "valid-private-bucket", "region": "cn-hangzhou", "storage_class": "Standard", "redundancy_type": "LRS", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), viewer, map[string]any{}, 403)
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups", account1), adminToken, nil, 400)
@@ -551,24 +558,26 @@ func TestIntegration(t *testing.T) {
 	if !strings.Contains(emptySecurityGroups.Body.String(), `"snapshot":false`) {
 		t.Fatalf("missing security group snapshot did not return immediately: %s", emptySecurityGroups.Body.String())
 	}
-	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "ecs.security_groups", "", map[string]any{"data": []map[string]any{{"id": "sg-one", "name": "web-tier", "region": "cn-hangzhou", "vpc_id": "vpc-one", "type": "normal", "instance_count": 1, "rule_count": 1, "rules_available": true, "rules": []map[string]any{{"id": "sgr-one", "direction": "ingress", "protocol": "tcp", "port_range": "443/443", "source": "203.0.113.0/24", "policy": "accept", "priority": "1"}}}}, "failed_regions": []string{}}); err != nil {
+	if err = seedServiceSnapshot(ctx, a, workspaceID, alibabaAccount, "ecs.security_groups", "", map[string]any{"data": []map[string]any{{"id": "sg-one", "name": "web-tier", "region": "cn-hangzhou", "vpc_id": "vpc-one", "type": "normal", "instance_count": 1, "rule_count": 1, "rules_available": true, "rules": []map[string]any{{"id": "sgr-one", "direction": "ingress", "protocol": "tcp", "port_range": "443/443", "source": "203.0.113.0/24", "policy": "accept", "priority": "1"}}}}, "failed_regions": []string{}}); err != nil {
 		t.Fatal(err)
 	}
 	securityGroupSnapshot := request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups", alibabaAccount), adminToken, nil, 200)
 	if !strings.Contains(securityGroupSnapshot.Body.String(), `"snapshot":true`) || !strings.Contains(securityGroupSnapshot.Body.String(), `"id":"sg-one"`) {
 		t.Fatalf("security group snapshot was not returned: %s", securityGroupSnapshot.Body.String())
 	}
+	var securityGroupOnce sync.Once
 	securityGroupStarted, releaseSecurityGroups := make(chan struct{}), make(chan struct{})
-	a.securityGroupRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64) error {
+	securityGroupHandler := func(runCtx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
+		gotWorkspace, gotAccount := p.WorkspaceID, p.AccountID
 		if gotWorkspace != workspaceID || gotAccount != alibabaAccount {
 			t.Errorf("unexpected security group refresh scope: workspace=%d account=%d", gotWorkspace, gotAccount)
 		}
-		close(securityGroupStarted)
+		securityGroupOnce.Do(func() { close(securityGroupStarted) })
 		select {
 		case <-releaseSecurityGroups:
-			return nil
+			return false, nil
 		case <-runCtx.Done():
-			return runCtx.Err()
+			return false, runCtx.Err()
 		}
 	}
 	queuedSecurityGroups := request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
@@ -576,6 +585,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(queuedSecurityGroups.Body.Bytes(), &securityGroupJob) != nil || securityGroupJob.ID == "" || securityGroupJob.Status != "queued" {
 		t.Fatalf("security group refresh was not queued: %s", queuedSecurityGroups.Body.String())
 	}
+	stopSecurityGroups := startServiceTestWorker(t, a, securityGroupHandler)
 	select {
 	case <-securityGroupStarted:
 	case <-time.After(2 * time.Second):
@@ -586,6 +596,7 @@ func TestIntegration(t *testing.T) {
 	if json.Unmarshal(coalescedSecurityGroups.Body.Bytes(), &sameSecurityGroupJob) != nil || sameSecurityGroupJob.ID != securityGroupJob.ID {
 		t.Fatalf("duplicate security group refresh was not coalesced: %s", coalescedSecurityGroups.Body.String())
 	}
+	request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh/%s", alibabaAccount, securityGroupJob.ID), secondOwner, nil, 404)
 	close(releaseSecurityGroups)
 	deadline = time.Now().Add(2 * time.Second)
 	for {
@@ -601,7 +612,7 @@ func TestIntegration(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	a.securityGroupRefreshRunner = a.collectSecurityGroups
+	stopSecurityGroups()
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/invalid/rules", alibabaAccount), adminToken, map[string]any{}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules", alibabaAccount), adminToken, map[string]any{"region": "cn-hangzhou", "direction": "ingress", "protocol": "tcp", "port_from": 100, "port_to": 22, "cidr": "0.0.0.0/0", "policy": "accept", "priority": 1}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules", alibabaAccount), viewer, map[string]any{}, 403)
@@ -836,4 +847,42 @@ func TestIntegration(t *testing.T) {
 			t.Fatal("login rate limit not enforced")
 		}
 	}
+}
+
+// Test fixtures may seed historical data without a worker lease. Production
+// snapshots can only be written through Store.SaveServiceSnapshot.
+func seedServiceSnapshot(ctx context.Context, a *App, workspace, account int64, service, region string, payload any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = a.DB.Exec(ctx, `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload) VALUES($1,$2,$3,$4,$5) ON CONFLICT(account_id,service_key,region) DO UPDATE SET payload=excluded.payload,fetched_at=now()`, workspace, account, service, region, raw)
+	return err
+}
+func startServiceTestWorker(t *testing.T, a *App, collect syncer.Collector) func() {
+	t.Helper()
+	q, err := jobs.New(a.DB, map[string]int{"account:*": 1, "provider:*": 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := worker.DefaultConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	runtime, err := worker.New(q, worker.Registry{syncer.JobKind: a.Sync.Handler(collect)}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- runtime.Run(ctx) }()
+	var once sync.Once
+	finish := func() {
+		once.Do(func() {
+			stop()
+			if err := <-done; err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	t.Cleanup(finish)
+	return finish
 }

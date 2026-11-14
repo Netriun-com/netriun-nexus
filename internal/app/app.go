@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -32,24 +31,17 @@ import (
 var assets embed.FS
 
 type App struct {
-	Sync                       *syncer.Store
-	DB                         *pgxpool.Pool
-	Redis                      *redis.Client
-	Vault                      *secure.Vault
-	SecureCookies              bool
-	Origin                     string
-	TrustedProxies             []*net.IPNet
-	Mailer                     mailSender
-	Policy                     *PolicyEngine
-	Entitlements               *entitlements.Service
-	InstallationID             string
-	backgroundCtx              context.Context
-	backgroundStop             context.CancelFunc
-	backgroundWG               sync.WaitGroup
-	edsRefreshRunner           func(context.Context, int64, int64, string, string) error
-	ossRefreshRunner           func(context.Context, int64, int64) error
-	securityGroupRefreshRunner func(context.Context, int64, int64) error
-	regionSlots                chan struct{}
+	Sync           *syncer.Store
+	DB             *pgxpool.Pool
+	Redis          *redis.Client
+	Vault          *secure.Vault
+	SecureCookies  bool
+	Origin         string
+	TrustedProxies []*net.IPNet
+	Mailer         mailSender
+	Policy         *PolicyEngine
+	Entitlements   *entitlements.Service
+	InstallationID string
 }
 type User struct {
 	ID            int64  `json:"id"`
@@ -100,13 +92,9 @@ func New(ctx context.Context) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
-	backgroundCtx, backgroundStop := context.WithCancel(context.Background())
-	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, regionSlots: make(chan struct{}, 6)}
+	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer}
 	a.Policy = &PolicyEngine{DB: db}
 	a.Sync = syncer.New(db, syncConfig)
-	a.edsRefreshRunner = a.refreshEDSService
-	a.ossRefreshRunner = a.collectOSSBuckets
-	a.securityGroupRefreshRunner = a.collectSecurityGroups
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -124,10 +112,6 @@ func New(ctx context.Context) (*App, error) {
 	return a, nil
 }
 func (a *App) Close() {
-	if a.backgroundStop != nil {
-		a.backgroundStop()
-		a.backgroundWG.Wait()
-	}
 	a.DB.Close()
 	a.Redis.Close()
 }

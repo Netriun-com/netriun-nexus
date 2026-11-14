@@ -1390,16 +1390,17 @@
     },
     "/accounts/{id}/eds/refresh": {
       "post": {
-        "summary": "Queue an asynchronous EDS page refresh while the current snapshots remain readable",
+        "summary": "Queue a durable EDS page refresh while the current snapshots remain readable",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
           { "name": "service", "in": "query", "required": true, "schema": { "type": "string", "enum": ["desktops", "users"] } },
-          { "name": "region", "in": "query", "required": true, "description": "A directory/desktop region; desktops also accepts `all`", "schema": { "type": "string" } }
+          { "name": "region", "in": "query", "required": true, "description": "A directory/desktop region; desktops also accepts `all`. Users regions sharing cn-shanghai or ap-southeast-1 directory endpoints share a durable job.", "schema": { "type": "string" } }
         ],
         "responses": {
-          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRefreshJob" } } } },
+          "202": { "description": "Durable scheduled sync jobs queued at high priority, or matching queued/running jobs joined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRefreshJob" } } } },
           "400": { "description": "Invalid provider, service, or region" },
           "403": { "description": "Cloud account access required" },
+          "409": { "description": "No enabled sync scope; check region selection or wait for discovery" },
           "503": { "description": "Refresh queue unavailable" }
         }
       }
@@ -1414,7 +1415,7 @@
         "responses": {
           "200": { "description": "Current EDS job status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRefreshJob" } } } },
           "403": { "description": "Cloud account access required" },
-          "404": { "description": "Job not found or expired" }
+          "404": { "description": "Receipt not found in this workspace/account scope, or expired" }
         }
       }
     },
@@ -1442,12 +1443,13 @@
     },
     "/accounts/{id}/oss/refresh": {
       "post": {
-        "summary": "Queue an asynchronous OSS bucket refresh while the current snapshot remains readable",
+        "summary": "Queue a durable OSS bucket refresh while the current snapshot remains readable",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
         "responses": {
-          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSRefreshJob" } } } },
+          "202": { "description": "Durable scheduled sync jobs queued at high priority, or matching queued/running jobs joined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSRefreshJob" } } } },
           "400": { "description": "The account is not an Alibaba connection" },
           "403": { "description": "Cloud account access required" },
+          "409": { "description": "No enabled sync scope; check region selection or wait for discovery" },
           "503": { "description": "Refresh queue unavailable" }
         }
       }
@@ -1462,7 +1464,7 @@
         "responses": {
           "200": { "description": "Current OSS job status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSRefreshJob" } } } },
           "403": { "description": "Cloud account access required" },
-          "404": { "description": "Job not found or expired" }
+          "404": { "description": "Receipt not found in this workspace/account scope, or expired" }
         }
       }
     },
@@ -1479,12 +1481,13 @@
     },
     "/accounts/{id}/ecs/security-groups/refresh": {
       "post": {
-        "summary": "Queue an asynchronous ECS security-group refresh while the current snapshot remains readable",
+        "summary": "Queue a durable ECS security-group refresh while the current snapshot remains readable",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
         "responses": {
-          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
+          "202": { "description": "Durable scheduled sync jobs queued at high priority, or matching queued/running jobs joined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
           "400": { "description": "The account is not an Alibaba connection" },
           "403": { "description": "Cloud account access required" },
+          "409": { "description": "No enabled sync scope; check region selection or wait for discovery" },
           "503": { "description": "Refresh queue unavailable" }
         }
       }
@@ -1499,7 +1502,7 @@
         "responses": {
           "200": { "description": "Current security-group refresh status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
           "403": { "description": "Cloud account access required" },
-          "404": { "description": "Job not found or expired" }
+          "404": { "description": "Receipt not found in this workspace/account scope, or expired" }
         }
       }
     },
