@@ -15,6 +15,7 @@ import (
 type Scheduler struct {
 	Store     *Store
 	Reconcile func(context.Context) error
+	Discovery Discovery
 }
 
 func (s Scheduler) Run(ctx context.Context) {
@@ -23,6 +24,9 @@ func (s Scheduler) Run(ctx context.Context) {
 	done := make(chan struct{})
 	go func() { defer close(done); s.maintain(ctx) }()
 	defer func() { <-done }()
+	discovered := make(chan struct{})
+	go func() { defer close(discovered); s.discover(ctx) }()
+	defer func() { <-discovered }()
 	ticker := time.NewTicker(s.Store.Config.Tick)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -50,7 +54,30 @@ func (s Scheduler) maintain(ctx context.Context) {
 		if _, err := s.Store.Queue.Cleanup(cleanup, s.Store.Config.Retention, 500); err != nil && ctx.Err() == nil {
 			slog.Warn("job retention cleanup failed")
 		}
+		if err := s.Store.CleanupRefreshes(cleanup); err != nil && ctx.Err() == nil {
+			slog.Warn("refresh receipt cleanup failed")
+		}
 		stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s Scheduler) discover(ctx context.Context) {
+	if s.Discovery == nil {
+		return
+	}
+	// Poll the persisted due times. The hourly cadence is per account, shared
+	// by replicas; new accounts can be discovered at the next minute tick.
+	ticker := time.NewTicker(s.Store.Config.Reconcile)
+	defer ticker.Stop()
+	for ctx.Err() == nil {
+		if err := s.Store.Discover(ctx, s.Discovery); err != nil && ctx.Err() == nil {
+			slog.Warn("sync region discovery failed")
+		}
 		select {
 		case <-ctx.Done():
 			return

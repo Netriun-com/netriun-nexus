@@ -14,7 +14,9 @@
 // New accepts per-key overrides. Every worker must use the same limits.
 // Keys of the form "account:123" can also match an "account:*" limit; exact
 // overrides take precedence over these namespace limits. Empty
-// keys are unconstrained. Claim skips locked rows and busy/full keys; callers
+// keys are unconstrained. Optional ProviderKey consumes a second limit using the
+// same locking protocol, so both account and provider caps apply. Claim skips
+// locked rows and busy/full keys; callers
 // should poll again after nil. Database time governs scheduling and leases.
 // This package does not start workers or call providers.
 package jobs
@@ -24,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +68,7 @@ type Job struct {
 	LockedBy       string
 	LockedUntil    *time.Time
 	ConcurrencyKey string
+	ProviderKey    string
 	DedupeKey      string
 	LastError      string
 	CreatedAt      time.Time
@@ -80,18 +84,19 @@ type Params struct {
 	MaxAttempts    int
 	RunAfter       time.Time
 	ConcurrencyKey string
+	ProviderKey    string
 	DedupeKey      string
 }
 
 const columns = `id, kind, payload, status, priority, attempts, max_attempts,
     run_after, COALESCE(locked_by, ''), locked_until, concurrency_key,
-    COALESCE(dedupe_key, ''), last_error, created_at, updated_at`
+    COALESCE(dedupe_key, ''), last_error, created_at, updated_at, provider_key`
 
 func scan(row pgx.Row) (*Job, error) {
 	j := new(Job)
 	err := row.Scan(&j.ID, &j.Kind, &j.Payload, &j.Status, &j.Priority,
 		&j.Attempts, &j.MaxAttempts, &j.RunAfter, &j.LockedBy, &j.LockedUntil,
-		&j.ConcurrencyKey, &j.DedupeKey, &j.LastError, &j.CreatedAt, &j.UpdatedAt)
+		&j.ConcurrencyKey, &j.DedupeKey, &j.LastError, &j.CreatedAt, &j.UpdatedAt, &j.ProviderKey)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +110,13 @@ func (q *Queue) Enqueue(ctx context.Context, p Params) (*Job, error) {
 // EnqueueTx atomically adds a job alongside scheduling state in the caller's transaction.
 func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, p Params) (*Job, error) {
 	return enqueueJob(ctx, tx, p)
+}
+
+// PromoteTx raises the priority of a queued job without bypassing retry backoff
+// or modifying a running job. Manual refreshes use it when joining a schedule.
+func (q *Queue) PromoteTx(ctx context.Context, tx pgx.Tx, id int64, priority int) error {
+	_, err := tx.Exec(ctx, `UPDATE jobs SET priority=GREATEST(priority,$2) WHERE id=$1 AND status='queued'`, id, priority)
+	return err
 }
 
 func enqueueJob(ctx context.Context, db interface {
@@ -127,11 +139,11 @@ func enqueueJob(ctx context.Context, db interface {
 		due = p.RunAfter
 	}
 	return scan(db.QueryRow(ctx, `INSERT INTO jobs
-        (kind, payload, priority, max_attempts, run_after, concurrency_key, dedupe_key)
-        VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, clock_timestamp()), $6, NULLIF($7, ''))
+        (kind, payload, priority, max_attempts, run_after, concurrency_key, dedupe_key, provider_key)
+        VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, clock_timestamp()), $6, NULLIF($7, ''), $8)
         ON CONFLICT (dedupe_key) WHERE status IN ('queued', 'running')
         DO UPDATE SET dedupe_key = jobs.dedupe_key RETURNING `+columns,
-		p.Kind, p.Payload, p.Priority, p.MaxAttempts, due, p.ConcurrencyKey, p.DedupeKey))
+		p.Kind, p.Payload, p.Priority, p.MaxAttempts, due, p.ConcurrencyKey, p.DedupeKey, p.ProviderKey))
 }
 
 // Cleanup removes one bounded batch of terminal jobs, using database time and
@@ -168,19 +180,25 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, k
 	}
 	for {
 		var id int64
-		var key string
-		err = tx.QueryRow(ctx, `SELECT id, concurrency_key FROM jobs
+		var key, providerKey string
+		err = tx.QueryRow(ctx, `SELECT id, concurrency_key, provider_key FROM jobs
             WHERE status = 'queued' AND run_after <= clock_timestamp() AND attempts < max_attempts
                 AND (cardinality($2::text[]) = 0 OR kind = ANY($2))
-                AND NOT (concurrency_key = ANY($1::text[]))
-            ORDER BY priority DESC, run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED`, excluded, kinds).Scan(&id, &key)
+                AND NOT (concurrency_key = ANY($1::text[]) OR provider_key = ANY($1::text[]))
+            ORDER BY priority DESC, run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED`, excluded, kinds).Scan(&id, &key, &providerKey)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		if err != nil {
 			return nil, err
 		}
-		if key != "" {
+		keys := []string{key, providerKey}
+		slices.Sort(keys)
+		blocked := false
+		for _, key := range slices.Compact(keys) {
+			if key == "" {
+				continue
+			}
 			var locked bool
 			// A row lock alone cannot serialize two claims of different jobs
 			// with the same key. Hash collisions only reduce parallelism.
@@ -188,9 +206,10 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, k
 			if err != nil {
 				return nil, err
 			}
-			excluded = append(excluded, key)
 			if !locked {
-				continue
+				excluded = append(excluded, key)
+				blocked = true
+				break
 			}
 			limit := 1
 			if namespace, _, ok := strings.Cut(key, ":"); ok {
@@ -205,15 +224,21 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, k
 			// Separate READ COMMITTED statement after acquiring the key lock
 			// sees claims committed by the previous holder. Count even expired
 			// leases until reclaimed, conservatively preserving the row limit.
-			err = tx.QueryRow(ctx, `SELECT count(*) FROM jobs WHERE status = 'running' AND concurrency_key = $1`, key).Scan(&running)
+			err = tx.QueryRow(ctx, `SELECT count(*) FROM jobs WHERE status = 'running' AND (concurrency_key = $1 OR provider_key = $1)`, key).Scan(&running)
 			if err != nil {
 				return nil, err
 			}
 			if running >= limit {
-				continue
+				excluded = append(excluded, key)
+				blocked = true
+				break
 			}
 		}
+		if blocked {
+			continue
+		}
 		j, err := scan(tx.QueryRow(ctx, `UPDATE jobs SET status = 'running', attempts = attempts + 1,
+            started_at=COALESCE(started_at,clock_timestamp()),
             locked_by = $2, locked_until = clock_timestamp() + $3::bigint * interval '1 microsecond',
             updated_at = clock_timestamp() WHERE id = $1 RETURNING `+columns, id, worker, lease.Microseconds()))
 		if err != nil {
@@ -228,6 +253,23 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, k
 
 const owned = `id = $1 AND locked_by = $2 AND attempts = $3
     AND status = 'running' AND locked_until > clock_timestamp()`
+
+// CheckLeaseTx locks a lease, then checks ownership using database time. A
+// handler can fence its persisted effects in the same short transaction.
+func CheckLeaseTx(ctx context.Context, tx pgx.Tx, j Job) error {
+	var id int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM jobs WHERE id=$1 FOR UPDATE`, j.ID).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrLeaseLost
+		}
+		return err
+	}
+	err := tx.QueryRow(ctx, `SELECT id FROM jobs WHERE `+owned, j.ID, j.LockedBy, j.Attempts).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrLeaseLost
+	}
+	return err
+}
 
 // Renew extends a live lease from database time; it cannot resurrect an expired lease.
 func (q *Queue) Renew(ctx context.Context, j Job, lease time.Duration) error {

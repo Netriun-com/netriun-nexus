@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -547,4 +548,81 @@ func TestWorkerWithScheduledCollectors(t *testing.T) {
 		t.Fatal("production collector startup failed")
 	}
 	p.stop(t, syscall.SIGTERM)
+}
+
+func TestManualRefreshSurvivesServeRestart(t *testing.T) {
+	db, _, dsn := database(t)
+	web := startProcess(t, dsn, "serve", "1s")
+	call := func(p *process, method, path, token string, body []byte, out any, want int) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), method, "http://"+p.address+path, bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		client := http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("%s %s: %d", method, path, resp.StatusCode)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var login struct {
+		Token string `json:"token"`
+	}
+	call(web, "POST", "/api/v1/auth/login", "", []byte(`{"email":"admin@example.com","password":"Testing-password1!"}`), &login, 200)
+	if login.Token == "" {
+		t.Fatal("no session token")
+	}
+	var workspace, account int64
+	if err := db.QueryRow(t.Context(), `SELECT workspace_id FROM users WHERE email='admin@example.com'`).Scan(&workspace); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(t.Context(), `INSERT INTO cloud_accounts(workspace_id,name,provider,credentials,regions) VALUES($1,'Restart','aws','test',ARRAY['us-east-1']) RETURNING id`, workspace).Scan(&account); err != nil {
+		t.Fatal(err)
+	}
+	store := syncer.New(db, syncer.DefaultConfig())
+	if err := store.Reconcile(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	var receipt syncer.Refresh
+	call(web, "POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d&region=us-east-1", account), login.Token, []byte(`{}`), &receipt, 202)
+	if receipt.Status != "queued" {
+		t.Fatalf("serve consumed work: %+v", receipt)
+	}
+	var id int64
+	if err := db.QueryRow(t.Context(), `SELECT unnest(job_ids) FROM inventory_refreshes WHERE id=$1`, receipt.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	web.stop(t, os.Kill)
+	if state, n, _ := jobState(t, db, id); state != "queued" || n != 0 {
+		t.Fatalf("server restart lost job: %s %d", state, n)
+	}
+	replacement := startProcess(t, dsn, "serve", "1s")
+	var resumed syncer.Refresh
+	call(replacement, "GET", "/api/v1/inventory/refresh/"+receipt.ID, login.Token, nil, &resumed, 200)
+	if resumed.Status != "queued" {
+		t.Fatal("receipt did not survive restart")
+	}
+	worker := startProcess(t, dsn, "worker", "1s", "NEXUS_TEST_SCHEDULER=1")
+	waitJob(t, db, id, "succeeded")
+	call(replacement, "GET", "/api/v1/inventory/refresh/"+receipt.ID, login.Token, nil, &resumed, 200)
+	if resumed.Status != "completed" {
+		t.Fatalf("worker did not finish original receipt: %+v", resumed)
+	}
+	var count int
+	if err := db.QueryRow(t.Context(), `SELECT count(*) FROM jobs WHERE payload->>'account_id'=$1`, fmt.Sprint(account)).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("manual and scheduled duplicate: %d %v", count, err)
+	}
+	worker.stop(t, syscall.SIGTERM)
+	replacement.stop(t, syscall.SIGTERM)
 }

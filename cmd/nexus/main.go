@@ -85,7 +85,7 @@ func runService(parent context.Context, cfg config, handlers worker.Registry) er
 		}
 		var background []func(context.Context)
 		if _, scheduled := handlers[syncer.JobKind]; scheduled {
-			scheduler := syncer.Scheduler{Store: store, Reconcile: func(ctx context.Context) error { return store.Reconcile(ctx, discover) }}
+			scheduler := syncer.Scheduler{Store: store, Reconcile: func(ctx context.Context) error { return store.Reconcile(ctx, nil) }, Discovery: discover}
 			background = append(background, scheduler.Run)
 		}
 		queue, err := jobs.New(db, map[string]int{"account:*": cfg.accountLimit, "provider:*": cfg.providerLimit})

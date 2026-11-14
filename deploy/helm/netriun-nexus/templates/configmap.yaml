@@ -18,6 +18,7 @@ data:
   NEXUS_SYNC_BUCKETS_INTERVAL: {{ printf "%ds" (int .Values.sync.bucketsIntervalSeconds) | quote }}
   NEXUS_SYNC_EMPTY_INTERVAL: {{ printf "%ds" (int .Values.sync.emptyIntervalSeconds) | quote }}
   NEXUS_SYNC_TICK_INTERVAL: {{ printf "%ds" (int .Values.sync.tickIntervalSeconds) | quote }}
+  NEXUS_SYNC_DISCOVERY_INTERVAL: {{ printf "%ds" (int .Values.sync.discoveryIntervalSeconds) | quote }}
   NEXUS_SYNC_RECONCILE_INTERVAL: {{ printf "%ds" (int .Values.sync.reconcileIntervalSeconds) | quote }}
   NEXUS_JOB_RETENTION: {{ printf "%ds" (int .Values.sync.jobRetentionSeconds) | quote }}
   NEXUS_WORKERS: {{ .Values.worker.concurrency | quote }}

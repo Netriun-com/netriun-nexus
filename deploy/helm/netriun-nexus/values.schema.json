@@ -14,6 +14,7 @@
         "emptyIntervalSeconds": { "type": "integer", "minimum": 1 },
         "tickIntervalSeconds": { "type": "integer", "minimum": 1 },
         "reconcileIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "discoveryIntervalSeconds": { "type": "integer", "minimum": 1 },
         "jobRetentionSeconds": { "type": "integer", "minimum": 1 }
       }
     },
