@@ -41,10 +41,6 @@ func (s *Store) recordResult(ctx context.Context, p Payload, j jobs.Job, message
 		if err := s.computeSummary(ctx, tx, p.AccountID); err != nil {
 			return err
 		}
-		// Preserve refresh-triggered audit retention until T16 schedules it.
-		if _, err := tx.Exec(ctx, `DELETE FROM audit_log WHERE workspace_id=$1 AND created_at < now()-make_interval(days=>(SELECT audit_retention_days FROM settings WHERE workspace_id=$1))`, p.WorkspaceID); err != nil {
-			return err
-		}
 		if _, err := tx.Exec(ctx, `UPDATE settings SET last_collector_run_at=clock_timestamp() WHERE workspace_id=$1`, p.WorkspaceID); err != nil {
 			return err
 		}

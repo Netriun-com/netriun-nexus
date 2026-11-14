@@ -219,6 +219,7 @@ use the same values in all processes. Compose passes these settings through.
 | `NEXUS_SYNC_TICK_INTERVAL` | `10s` | Due-job polling, up to 100 scopes per tick |
 | `NEXUS_SYNC_RECONCILE_INTERVAL` | `1m` | Database reconciliation, discovery due-time polling, and retention cleanup |
 | `NEXUS_SYNC_DISCOVERY_INTERVAL` | `1h` | Provider region discovery per all-regions account |
+| `NEXUS_AUDIT_RETENTION_INTERVAL` | `24h` | Per-workspace audit cleanup schedule |
 | `NEXUS_JOB_RETENTION` | `168h` | Terminal job retention (7 days) |
 
 AWS/Alibaba compute and EDS desktops use per-region rows. Explicit selections
@@ -274,8 +275,18 @@ Successful compute jobs update `cloud_accounts.last_sync_at` to the oldest
 successful timestamp across enabled compute rows (NULL while any has never
 succeeded). Error summaries retain other regions' failures; credentials/access,
 timeout, cancellation and provider errors use distinct safe messages, recorded
-with a fresh context. Existing refresh-triggered audit retention remains attached
-to compute completion until T16 gives it its own scheduled job.
+with a fresh context.
+
+Audit cleanup runs independently of sync and refresh as a durable `audit.retention`
+job per workspace, only in `worker` and `all` roles. A new workspace is due on the
+next scheduler tick, even without cloud accounts. Each enqueue persists the next
+due time using `NEXUS_AUDIT_RETENTION_INTERVAL` (default `24h`); changing the interval
+affects the next enqueue, without resetting existing due times. Replicas share a
+per-workspace dedupe and concurrency key. The handler reads
+`settings.audit_retention_days` and deletes older rows in transactions of at most
+500 rows, checking its job lease before committing each batch. Newer rows stay;
+locked rows are left for the next run. Queue retries safely resume partial work.
+The Helm setting is `sync.auditRetentionIntervalSeconds` (default `86400`).
 
 EDS/OSS/security-group refreshes retain their Valkey runners and region semaphore
 until T14. Regional desktop sync does not rebuild the all-region desktop snapshot;

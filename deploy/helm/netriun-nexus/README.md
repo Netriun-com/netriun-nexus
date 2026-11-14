@@ -125,6 +125,12 @@ uses the reconciliation interval. New accounts need successful discovery before
 manual compute refresh can enqueue their regional scopes. Cleanup deletes only
 old terminal jobs, in batches of 500.
 
+`sync.auditRetentionIntervalSeconds` (default `86400`, emitted as
+`NEXUS_AUDIT_RETENTION_INTERVAL`) controls per-workspace audit cleanup. Only
+worker/all roles schedule and execute these durable jobs; serve never does.
+Each job uses the workspace's `settings.audit_retention_days` and deletes expired
+audit rows in batches of at most 500. No cloud accounts or refreshes are needed.
+
 TODO(T14): replace Alibaba account-wide rows once collectors are regional.
 EDS users may also refresh desktops, but does not update desktop sync_state rows.
 Compute refresh uses durable jobs and the existing polling response shape;

@@ -22,12 +22,14 @@ const (
 type Config struct {
 	Compute, Desktops, Users, SecurityGroups, Buckets, Empty time.Duration
 	Tick, Reconcile, Discovery, Retention                    time.Duration
+	AuditRetentionInterval                                   time.Duration
 }
 
 func DefaultConfig() Config {
 	return Config{Compute: 5 * time.Minute, Desktops: 5 * time.Minute, Users: 5 * time.Minute,
 		SecurityGroups: 15 * time.Minute, Buckets: time.Hour, Empty: 6 * time.Hour,
-		Tick: 10 * time.Second, Reconcile: time.Minute, Discovery: time.Hour, Retention: 7 * 24 * time.Hour}
+		Tick: 10 * time.Second, Reconcile: time.Minute, Discovery: time.Hour, Retention: 7 * 24 * time.Hour,
+		AuditRetentionInterval: 24 * time.Hour}
 }
 
 func LoadConfig() (Config, error) {
@@ -37,8 +39,9 @@ func LoadConfig() (Config, error) {
 		"NEXUS_SYNC_USERS_INTERVAL": &c.Users, "NEXUS_SYNC_SECURITY_GROUPS_INTERVAL": &c.SecurityGroups,
 		"NEXUS_SYNC_BUCKETS_INTERVAL": &c.Buckets, "NEXUS_SYNC_EMPTY_INTERVAL": &c.Empty,
 		"NEXUS_SYNC_TICK_INTERVAL": &c.Tick, "NEXUS_SYNC_RECONCILE_INTERVAL": &c.Reconcile,
-		"NEXUS_SYNC_DISCOVERY_INTERVAL": &c.Discovery,
-		"NEXUS_JOB_RETENTION":           &c.Retention,
+		"NEXUS_SYNC_DISCOVERY_INTERVAL":  &c.Discovery,
+		"NEXUS_JOB_RETENTION":            &c.Retention,
+		"NEXUS_AUDIT_RETENTION_INTERVAL": &c.AuditRetentionInterval,
 	} {
 		if value := os.Getenv(name); value != "" {
 			d, err := time.ParseDuration(value)

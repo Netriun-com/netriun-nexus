@@ -626,3 +626,61 @@ func TestManualRefreshSurvivesServeRestart(t *testing.T) {
 	worker.stop(t, syscall.SIGTERM)
 	replacement.stop(t, syscall.SIGTERM)
 }
+
+func TestAuditRetentionRoleProcesses(t *testing.T) {
+	for _, role := range []string{"serve", "worker", "all"} {
+		t.Run(role, func(t *testing.T) {
+			db, _, dsn := database(t)
+			p := startProcess(t, dsn, role, "1s", "NEXUS_TEST_SCHEDULER=1")
+			defer p.stop(t, syscall.SIGTERM)
+			tx, err := db.Begin(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			var workspace int64
+			if err := tx.QueryRow(t.Context(), `INSERT INTO workspaces(name,slug) VALUES('Retention test','retention-test') RETURNING id`).Scan(&workspace); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.Exec(t.Context(), `INSERT INTO settings(workspace_id,audit_retention_days) VALUES($1,7)`, workspace); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.Exec(t.Context(), `INSERT INTO audit_log(workspace_id,action,created_at) VALUES($1,'old',now()-interval '8 days'),($1,'recent',now()-interval '6 days')`, workspace); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Commit(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			// No cloud accounts or sync jobs exist: retention must run independently.
+			count := func() int {
+				var n int
+				if err := db.QueryRow(t.Context(), `SELECT count(*) FROM audit_log WHERE workspace_id=$1`, workspace).Scan(&n); err != nil {
+					t.Fatal(err)
+				}
+				return n
+			}
+			if role == "serve" {
+				time.Sleep(200 * time.Millisecond)
+				if count() != 2 {
+					t.Fatal("serve ran audit retention")
+				}
+				var n int
+				if err := db.QueryRow(t.Context(), `SELECT count(*) FROM jobs WHERE kind=$1`, syncer.AuditRetentionJobKind).Scan(&n); err != nil {
+					t.Fatal(err)
+				}
+				if n != 0 {
+					t.Fatal("serve scheduled audit retention")
+				}
+				return
+			}
+			eventually(t, func() bool { return count() == 1 })
+			var action string
+			if err := db.QueryRow(t.Context(), `SELECT action FROM audit_log WHERE workspace_id=$1`, workspace).Scan(&action); err != nil {
+				t.Fatal(err)
+			}
+			if action != "recent" {
+				t.Fatal("retention removed recent audit row")
+			}
+		})
+	}
+}

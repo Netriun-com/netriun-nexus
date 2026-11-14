@@ -20,6 +20,7 @@ data:
   NEXUS_SYNC_TICK_INTERVAL: {{ printf "%ds" (int .Values.sync.tickIntervalSeconds) | quote }}
   NEXUS_SYNC_DISCOVERY_INTERVAL: {{ printf "%ds" (int .Values.sync.discoveryIntervalSeconds) | quote }}
   NEXUS_SYNC_RECONCILE_INTERVAL: {{ printf "%ds" (int .Values.sync.reconcileIntervalSeconds) | quote }}
+  NEXUS_AUDIT_RETENTION_INTERVAL: {{ printf "%ds" (int .Values.sync.auditRetentionIntervalSeconds) | quote }}
   NEXUS_JOB_RETENTION: {{ printf "%ds" (int .Values.sync.jobRetentionSeconds) | quote }}
   NEXUS_WORKERS: {{ .Values.worker.concurrency | quote }}
   NEXUS_ACCOUNT_CONCURRENCY: {{ .Values.worker.accountConcurrency | quote }}
