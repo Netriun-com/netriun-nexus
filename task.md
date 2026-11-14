@@ -341,7 +341,7 @@ lease expires; Helm lint and template pass with the worker option on and off.
 
 ### T12. Add `sync_state` and the scheduler
 
-- [x] Implemented in this PR, including the approved account-wide `*` scopes until T14.
+- [x] Done — merged in [PR #15](https://github.com/Netriun-com/netriun-nexus/pull/15), including the approved account-wide `*` scopes until T14.
 
 Work:
 
@@ -364,6 +364,8 @@ synced on schedule; empty regions move to the 6-hour interval; stopping and
 starting the worker does not lose or duplicate scheduled work.
 
 ### T13. Move compute inventory refresh onto the queue
+
+- [x] Implemented in this PR.
 
 Work:
 

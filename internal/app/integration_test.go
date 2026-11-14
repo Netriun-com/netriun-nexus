@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +17,9 @@ import (
 	"time"
 
 	"github.com/netriun/nexus/internal/cloud"
+	"github.com/netriun/nexus/internal/jobs"
 	syncer "github.com/netriun/nexus/internal/sync"
+	"github.com/netriun/nexus/internal/worker"
 )
 
 type fakeMailer struct {
@@ -241,8 +242,20 @@ func TestIntegration(t *testing.T) {
 		{ID: fmt.Sprint("i-", account1), Name: "Batch updated", Region: "us-east-1", State: "running", Type: "t3.micro", Details: map[string]any{"batch": true}},
 		{ID: "i-batch-second", Name: "Batch second", Region: "us-east-1", State: "stopped", Type: "t3.nano", Details: map[string]any{"batch": true}},
 	}
-	if err = a.reconcileInventory(ctx, account1, batchItems, false, "us-east-1"); err != nil {
+	if _, err = a.Sync.RefreshCompute(ctx, workspaceID, []int64{account1}, "us-east-1"); err != nil {
+		t.Fatal(err)
+	}
+	batchJob, err := a.Sync.Queue.Claim(ctx, "batch-test", time.Minute, syncer.JobKind)
+	if err != nil || batchJob == nil {
+		t.Fatalf("batch claim: %v", err)
+	}
+	if err = a.Sync.Handler(func(run context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
+		return false, a.Sync.ReconcileInventory(run, account1, batchItems, false, "us-east-1")
+	})(ctx, *batchJob); err != nil {
 		t.Fatalf("batch inventory reconciliation failed: %v", err)
+	}
+	if err := a.Sync.Queue.Complete(ctx, *batchJob); err != nil {
+		t.Fatal(err)
 	}
 	var batchCount int
 	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM instances WHERE account_id=$1 AND details->>'batch'='true'", account1).Scan(&batchCount); err != nil || batchCount != 2 {
@@ -302,28 +315,6 @@ func TestIntegration(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("expected two instances across selected AWS accounts, got %d", len(list.Data))
 	}
-	t.Run("scheduled compute retries a skipped legacy collection", func(t *testing.T) {
-		// A newer account timestamp makes the legacy lock skip its callback
-		// after the other holder releases it. No provider API should be called.
-		if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=clock_timestamp()+interval '1 hour' WHERE id=$1", account1); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if _, err := a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=NULL WHERE id=$1", account1); err != nil {
-				t.Error(err)
-			}
-		})
-		key := fmt.Sprintf("collector:lock:%d:compute:%d", workspaceID, account1)
-		if err := a.Redis.Set(ctx, key, "other-collector", 100*time.Millisecond).Err(); err != nil {
-			t.Fatal(err)
-		}
-		deadline, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		_, err := a.CollectScheduled(deadline, syncer.Payload{WorkspaceID: workspaceID, AccountID: account1, Service: syncer.Compute, Region: "us-east-1"}, syncer.Account{Provider: "aws"})
-		if err == nil || err.Error() != "Collection deferred after concurrent refresh" {
-			t.Fatalf("skipped collection must retry: %v", err)
-		}
-	})
 	t.Run("instance snapshot freshness", func(t *testing.T) {
 		oldest := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Second)
 		newest := oldest.Add(8 * time.Minute)
@@ -364,28 +355,42 @@ func TestIntegration(t *testing.T) {
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, alibabaAccount), adminToken, nil, 400)
 	request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, alibabaAccount), adminToken, map[string]any{}, 400)
-	refreshStarted, releaseRefresh := make(chan struct{}), make(chan struct{})
-	a.refreshRunner = func(runCtx context.Context, gotWorkspace int64, gotIDs []int64) error {
-		if gotWorkspace != workspaceID || len(gotIDs) != 2 || gotIDs[0] != account1 || gotIDs[1] != account2 {
-			t.Errorf("unexpected asynchronous refresh scope: workspace=%d accounts=%v", gotWorkspace, gotIDs)
+	refreshStarted, releaseRefresh := make(chan struct{}, 2), make(chan struct{})
+	queue, err := jobs.New(a.DB, map[string]int{"account:*": 1, "provider:*": 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := a.Sync.Handler(func(runCtx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
+		if p.WorkspaceID != workspaceID || (p.AccountID != account1 && p.AccountID != account2) || p.Service != syncer.Compute || p.Region != "us-east-1" {
+			t.Errorf("unexpected refresh scope: %+v", p)
 		}
-		close(refreshStarted)
+		refreshStarted <- struct{}{}
 		select {
 		case <-releaseRefresh:
-			return nil
+			return false, nil
 		case <-runCtx.Done():
-			return runCtx.Err()
+			return false, runCtx.Err()
 		}
+	})
+	runtime, err := worker.New(queue, worker.Registry{syncer.JobKind: handler}, worker.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
 	}
 	queued := request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, account2), adminToken, map[string]any{}, http.StatusAccepted)
 	var refreshJob inventoryRefreshJob
 	if err = json.Unmarshal(queued.Body.Bytes(), &refreshJob); err != nil || refreshJob.ID == "" || refreshJob.Status != "queued" {
 		t.Fatalf("refresh was not queued: %s", queued.Body.String())
 	}
-	select {
-	case <-refreshStarted:
-	case <-time.After(2 * time.Second):
-		t.Fatal("asynchronous refresh did not start")
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- runtime.Run(workerCtx) }()
+	defer func() { stopWorker(); <-workerDone }()
+	for range 2 {
+		select {
+		case <-refreshStarted:
+		case <-time.After(3 * time.Second):
+			t.Fatal("durable refresh did not start")
+		}
 	}
 	coalesced := request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, account2), adminToken, map[string]any{}, http.StatusAccepted)
 	var coalescedJob inventoryRefreshJob
@@ -393,6 +398,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("duplicate refresh was not coalesced: %s", coalesced.Body.String())
 	}
 	request("GET", "/api/v1/inventory/refresh/"+refreshJob.ID, viewer, nil, 403)
+	request("GET", "/api/v1/inventory/refresh/"+refreshJob.ID, secondOwner, nil, 404)
 	close(releaseRefresh)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -408,7 +414,11 @@ func TestIntegration(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	a.refreshRunner = a.collectAccounts
+	var fresh bool
+	if err := a.DB.QueryRow(ctx, "SELECT last_sync_at IS NOT NULL AND sync_error='' FROM cloud_accounts WHERE id=$1", account1).Scan(&fresh); err != nil || !fresh {
+		t.Fatalf("compute freshness not updated: %v", err)
+	}
+	stopWorker()
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
 	emptyEDS := request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, nil, 200)
 	if !strings.Contains(emptyEDS.Body.String(), `"snapshot":false`) {
@@ -795,25 +805,8 @@ func TestIntegration(t *testing.T) {
 		request("POST", "/api/v1/users", adminToken, map[string]string{"username": fmt.Sprintf("member-%d", i), "email": fmt.Sprintf("member-%d@example.com", i), "password": "Member-password1!", "role": "user"}, 200)
 	}
 	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, http.StatusPaymentRequired)
-	// A per-account lease coalesces overlapping provider calls without changing another worker's lock.
-	accountLockKey := fmt.Sprintf("collector:lock:%d:compute:%d", workspaceID, account1)
-	a.Redis.Set(ctx, accountLockKey, "other-worker", time.Minute)
-	lockCtx, cancelLock := context.WithTimeout(ctx, 25*time.Millisecond)
-	called := false
-	err = a.withAccountCollectorLock(lockCtx, workspaceID, account1, func(context.Context) error { called = true; return nil })
-	cancelLock()
-	if !errors.Is(err, context.DeadlineExceeded) || called {
-		t.Fatalf("overlapping account collection was not coalesced: called=%v err=%v", called, err)
-	}
-	if value, _ := a.Redis.Get(ctx, accountLockKey).Result(); value != "other-worker" {
-		t.Fatal("another worker's lock changed")
-	}
-	a.Redis.Del(ctx, accountLockKey)
 	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", account1), adminToken, nil, 200)
 	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", account2), adminToken, nil, 200)
-	if err = a.Collect(ctx, workspaceID); err != nil {
-		t.Fatal(err)
-	}
 	request("POST", "/api/v1/auth/logout", adminToken, map[string]any{}, 200)
 	request("GET", "/api/v1/auth/me", adminToken, nil, 401)
 	request("GET", "/readyz", "", nil, 200)

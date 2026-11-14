@@ -34,10 +34,19 @@ type Payload struct {
 	AccountID   int64  `json:"account_id"`
 	Service     string `json:"service"`
 	Region      string `json:"region"`
+	Provider    string `json:"provider,omitempty"`
 	StateID     int64  `json:"state_id"`
 }
 
 func (p Payload) Key() string { return fmt.Sprintf("sync:%d:%s:%s", p.AccountID, p.Service, p.Region) }
+
+// ProviderKey adds the provider cap only for compute; other services migrate in T14.
+func (p Payload) ProviderKey() string {
+	if p.Service == Compute && p.Provider != "" {
+		return "provider:" + p.Provider
+	}
+	return ""
+}
 
 type Account struct {
 	ID, WorkspaceID int64
@@ -57,7 +66,7 @@ func (s *Store) EnqueueDue(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback(context.Background())
-	rows, err := tx.Query(ctx, `SELECT s.id,a.workspace_id,s.account_id,s.service,s.region
+	rows, err := tx.Query(ctx, `SELECT s.id,a.workspace_id,s.account_id,s.service,s.region,a.provider
         FROM sync_state s JOIN cloud_accounts a ON a.id=s.account_id
         WHERE s.enabled AND s.next_due_at<=clock_timestamp()
         AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.status IN ('queued','running')
@@ -69,7 +78,7 @@ func (s *Store) EnqueueDue(ctx context.Context) (int, error) {
 	var due []Payload
 	for rows.Next() {
 		var p Payload
-		if err := rows.Scan(&p.StateID, &p.WorkspaceID, &p.AccountID, &p.Service, &p.Region); err != nil {
+		if err := rows.Scan(&p.StateID, &p.WorkspaceID, &p.AccountID, &p.Service, &p.Region, &p.Provider); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -82,7 +91,7 @@ func (s *Store) EnqueueDue(ctx context.Context) (int, error) {
 	}
 	for _, p := range due {
 		raw, _ := json.Marshal(p)
-		if _, err := s.Queue.EnqueueTx(ctx, tx, jobs.Params{Kind: JobKind, Payload: raw, DedupeKey: p.Key(), ConcurrencyKey: fmt.Sprintf("account:%d", p.AccountID)}); err != nil {
+		if _, err := s.Queue.EnqueueTx(ctx, tx, jobs.Params{Kind: JobKind, Payload: raw, DedupeKey: p.Key(), ConcurrencyKey: fmt.Sprintf("account:%d", p.AccountID), ProviderKey: p.ProviderKey()}); err != nil {
 			return 0, err
 		}
 	}
@@ -129,18 +138,14 @@ func (s *Store) Handler(collect Collector) worker.Handler {
 					code, message = "NX-SYNC-TIMEOUT", "Collection timed out; retry is scheduled."
 				}
 			}
+			if p.Service == Compute {
+				code, message = ComputeError(result)
+			}
 			// Never reuse a cancelled provider context for recording failure.
 			save, stop := context.WithTimeout(context.Background(), 3*time.Second)
 			defer stop()
 			interval := s.Config.Interval(p.Service, result == nil && empty)
-			_, saveErr := s.DB.Exec(save, `UPDATE sync_state s SET
-                last_success_at=CASE WHEN $4='' THEN clock_timestamp() ELSE last_success_at END,
-                last_error=$4,last_error_code=$5,empty=CASE WHEN $4='' THEN $6 ELSE empty END,
-                "interval"=$7::bigint*interval '1 microsecond',
-                next_due_at=clock_timestamp()+$7::bigint*interval '1 microsecond'
-                FROM jobs j WHERE s.id=$1 AND s.last_job_id=$2 AND s.last_attempt=$3
-                AND j.id=$2 AND j.attempts=$3 AND j.locked_by=$8 AND j.status='running' AND j.locked_until>clock_timestamp()`,
-				p.StateID, j.ID, j.Attempts, message, code, empty, interval.Microseconds(), j.LockedBy)
+			saveErr := s.recordResult(save, p, j, message, code, empty, interval)
 			if result != nil {
 				result = errors.New(message)
 			}
@@ -148,7 +153,7 @@ func (s *Store) Handler(collect Collector) worker.Handler {
 				result = errors.New("Could not record scheduled sync result")
 			}
 		}()
-		empty, result = collect(ctx, p, ac)
+		empty, result = collect(context.WithValue(ctx, attemptKey{}, attempt{Payload: p, Job: j}), p, ac)
 		if result == nil {
 			result = ctx.Err()
 		}

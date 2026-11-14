@@ -40,7 +40,7 @@ func (s *Store) Reconcile(ctx context.Context, discover Discovery) error {
 	}
 	for _, a := range accounts {
 		var found map[string][]string
-		if len(a.Regions) == 0 && (a.Provider == "aws" || a.Provider == "alibaba") {
+		if discover != nil && len(a.Regions) == 0 && (a.Provider == "aws" || a.Provider == "alibaba") {
 			found = discover(ctx, a)
 		}
 		tx, err := s.DB.Begin(ctx)
@@ -83,6 +83,16 @@ func (s *Store) reconcileAccount(ctx context.Context, tx pgx.Tx, id int64, found
 	}
 	if expected != nil && (a.Provider != expected.Provider || !slices.Equal(a.Regions, expected.Regions)) {
 		return nil
+	}
+	if len(a.Regions) == 0 && (a.Provider == "aws" || a.Provider == "alibaba") {
+		if _, err := tx.Exec(ctx, `INSERT INTO sync_discovery(account_id) VALUES($1) ON CONFLICT(account_id) DO UPDATE
+		    SET next_due_at=CASE WHEN $2 THEN clock_timestamp() ELSE sync_discovery.next_due_at END`, id, expected == nil); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, "DELETE FROM sync_discovery WHERE account_id=$1", id); err != nil {
+			return err
+		}
 	}
 	desired := map[string][]string{}
 	if a.Provider == "azure" || a.Provider == "gcp" {
