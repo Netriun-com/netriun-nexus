@@ -5,13 +5,15 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/netriun/nexus/internal/app"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestMigration(t *testing.T) {
@@ -33,14 +35,15 @@ func TestMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	schema, err := os.ReadFile("../../internal/app/schema.sql")
-	if err != nil {
+	if err = app.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(ctx, string(schema)); err != nil {
+	if _, err = db.Exec(ctx, "TRUNCATE workspaces,users,access_groups,cloud_accounts,instances,audit_log RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(ctx, "TRUNCATE users,access_groups,cloud_accounts,instances,audit_log RESTART IDENTITY CASCADE"); err != nil {
+	// A fresh schema has no workspace until application bootstrap creates one.
+	var workspaceID int64
+	if err = db.QueryRow(ctx, "INSERT INTO workspaces(name,slug) VALUES('Migration test','migration-test') RETURNING id").Scan(&workspaceID); err != nil {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.MinCost)
@@ -61,12 +64,16 @@ func TestMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	db.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&n)
+	if err = db.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n != 0 {
 		t.Fatal("dry run persisted users")
 	}
 	var sequence int64
-	db.QueryRow(ctx, "SELECT last_value FROM users_id_seq").Scan(&sequence)
+	if err = db.QueryRow(ctx, "SELECT last_value FROM users_id_seq").Scan(&sequence); err != nil {
+		t.Fatal(err)
+	}
 	if sequence != 1 {
 		t.Fatal("dry run mutated sequence")
 	}
@@ -74,20 +81,28 @@ func TestMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var role, encrypted, password string
-	db.QueryRow(ctx, "SELECT role FROM user_groups").Scan(&role)
+	if err = db.QueryRow(ctx, "SELECT role FROM user_groups").Scan(&role); err != nil {
+		t.Fatal(err)
+	}
 	if role != "manager" {
 		t.Fatal("legacy role not mapped")
 	}
-	db.QueryRow(ctx, "SELECT credentials FROM cloud_accounts").Scan(&encrypted)
+	if err = db.QueryRow(ctx, "SELECT credentials FROM cloud_accounts").Scan(&encrypted); err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(encrypted, "testsecret") {
 		t.Fatal("plaintext secret imported")
 	}
-	db.QueryRow(ctx, "SELECT password_hash FROM users WHERE id=7").Scan(&password)
+	if err = db.QueryRow(ctx, "SELECT password_hash FROM users WHERE id=7").Scan(&password); err != nil {
+		t.Fatal(err)
+	}
 	if err = bcrypt.CompareHashAndPassword([]byte(password), []byte("legacy-password")); err != nil {
 		t.Fatal("legacy PHP bcrypt login failed")
 	}
 	var next int64
-	db.QueryRow(ctx, "INSERT INTO users(username,password_hash,role) VALUES('next','unused','user') RETURNING id").Scan(&next)
+	if err = db.QueryRow(ctx, "INSERT INTO users(workspace_id,username,password_hash,role) VALUES($1,'next','unused','user') RETURNING id", workspaceID).Scan(&next); err != nil {
+		t.Fatal(err)
+	}
 	if next != 8 {
 		t.Fatalf("sequence wrong: %d", next)
 	}
