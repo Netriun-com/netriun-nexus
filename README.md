@@ -68,7 +68,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
 - Workspace-scoped OIDC and SAML 2.0 single sign-on with JIT provisioning, claim/group-to-team mapping, and owner break-glass login.
-- Valkey-backed sessions, local and federated logout, login rate limiting, asynchronous refresh-job status, and per-account live-refresh leases.
+- Valkey-backed sessions, local and federated logout, login rate limiting, EDS/OSS/security-group refresh-job status and service collector leases. Compute refresh jobs and their status live in PostgreSQL.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.
 - Searchable in-app Documentation Center and contextual Help, backed by one structured content source and the stable [documentation map](docs/index.md).
@@ -180,10 +180,11 @@ systems continue to run as before.
 | `NEXUS_SHUTDOWN_TIMEOUT` | `15s` | Time to drain handlers after SIGTERM/SIGINT |
 
 Counts must be positive integers and the shutdown timeout a positive Go duration.
-All workers sharing the queue must use the same per-key limits. Each job has one
-concurrency key: account and provider keys are separate scopes, not simultaneous
-hierarchical limits on one job. Other nonempty keys retain the queue's default
-limit of one; empty keys are limited by the process pool only.
+All workers sharing the queue must use the same per-key limits. Compute jobs
+consume both `account:<id>` and `provider:<provider>` limits across replicas;
+other jobs retain their existing single-key limits. Claim skips busy accounts
+and providers, so one slow account does not occupy the entire pool. Other
+nonempty keys default to one; empty keys are limited by the process pool only.
 
 Workers poll every 500ms, lease jobs for 30s, and renew every 10s while a handler
 runs. Only registered kinds are claimed. Successful handlers complete jobs;
@@ -216,15 +217,21 @@ use the same values in all processes. Compose passes these settings through.
 | `NEXUS_SYNC_BUCKETS_INTERVAL` | `1h` | OSS buckets |
 | `NEXUS_SYNC_EMPTY_INTERVAL` | `6h` | Successful empty regional scopes only |
 | `NEXUS_SYNC_TICK_INTERVAL` | `10s` | Due-job polling, up to 100 scopes per tick |
-| `NEXUS_SYNC_RECONCILE_INTERVAL` | `1m` | Account reconciliation and retention cleanup |
+| `NEXUS_SYNC_RECONCILE_INTERVAL` | `1m` | Database reconciliation, discovery due-time polling, and retention cleanup |
+| `NEXUS_SYNC_DISCOVERY_INTERVAL` | `1h` | Provider region discovery per all-regions account |
 | `NEXUS_JOB_RETENTION` | `168h` | Terminal job retention (7 days) |
 
 AWS/Alibaba compute and EDS desktops use per-region rows. Explicit selections
-are reconciled in the account-save transaction; for “all regions,” worker
-maintenance discovers regions with the existing provider APIs. After upgrade,
+are reconciled in the account-save transaction; for “all regions,” the worker
+discovery loop lists regions with the existing provider APIs. After upgrade,
 maintenance also backfills existing accounts. Failed discovery preserves known
 rows; new regional accounts need successful discovery before their first sync.
-Discovery runs separately from due-job polling. Account deletion cascades rows;
+Discovery runs separately from database reconciliation and due-job polling.
+Persisted per-account due times enforce the hourly cadence across restarts; a
+PostgreSQL advisory lock allows only one replica to discover at a time. New
+all-region accounts become eligible at the next reconciliation/discovery poll.
+Failed discovery preserves scopes and retries after the configured interval.
+Account deletion cascades rows;
 region changes remove obsolete regional scopes. Disabled rows remain disabled.
 
 The region sentinel `*` means a whole-account collector: Azure/GCP compute,
@@ -249,11 +256,30 @@ interval. Known partial snapshots are failures. Cleanup removes at most 500
 succeeded/failed jobs per maintenance pass based on their last update time;
 queued/running jobs are retained regardless of age.
 
-Collectors and their Valkey coordination remain unchanged. The current UI and
-manual HTTP refresh runners are not moved to the durable queue in this task.
-Regional desktop sync does not rebuild the all-region desktop snapshot; current
-EDS users/manual collectors still do that. Snapshot freshness shown by the
-legacy UI is not yet driven by sync_state (T13–T15).
+Compute collection now runs only as durable `scheduled.sync` jobs, including
+manual refresh. `POST /api/v1/inventory/refresh` creates a PostgreSQL polling
+receipt over the selected compute jobs, promotes queued jobs to priority 100,
+and joins running jobs without duplication or bypassing retry backoff. An
+optional `region` query parameter narrows AWS/Alibaba scopes; Azure/GCP retain
+their account-wide `*` collector. If a selected account has no matching enabled
+scope (including pending discovery), the request returns 409 without partially
+enqueueing other accounts. Retrying after discovery queues the requested work.
+The existing status URL and JSON shape remain compatible with the UI. Status
+reads authorize both the receipt and every job's workspace/account. Receipts
+survive server restarts and expire with terminal-job retention.
+
+Compute writes check the current job lease and scope generation in the same
+transaction as reconciliation, so an old attempt cannot overwrite newer data.
+Successful compute jobs update `cloud_accounts.last_sync_at` to the oldest
+successful timestamp across enabled compute rows (NULL while any has never
+succeeded). Error summaries retain other regions' failures; credentials/access,
+timeout, cancellation and provider errors use distinct safe messages, recorded
+with a fresh context. Existing refresh-triggered audit retention remains attached
+to compute completion until T16 gives it its own scheduled job.
+
+EDS/OSS/security-group refreshes retain their Valkey runners and region semaphore
+until T14. Regional desktop sync does not rebuild the all-region desktop snapshot;
+EDS users/manual collectors still do that. Page sync triggers are unchanged (T15).
 
 ### HTTP operation
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -55,12 +56,18 @@ func testQueue(t *testing.T, limits map[string]int) *Queue {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
-	migration, err := os.ReadFile("../app/migrations/011_jobs.sql")
+	migrations, err := filepath.Glob("../app/migrations/*.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
+	for _, path := range migrations {
+		migration, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(ctx, string(migration)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	q, err := New(db, limits)
 	if err != nil {
@@ -76,6 +83,40 @@ func enqueue(t *testing.T, q *Queue, p Params) *Job {
 		t.Fatal(err)
 	}
 	return j
+}
+
+func TestAccountAndProviderLimitsTogether(t *testing.T) {
+	q := testQueue(t, map[string]int{"account:*": 1, "provider:*": 2})
+	for _, account := range []string{"account:1", "account:2", "account:3"} {
+		for range 3 {
+			enqueue(t, q, Params{Kind: "compute", ConcurrencyKey: account, ProviderKey: "provider:aws"})
+		}
+	}
+	enqueue(t, q, Params{Kind: "compute", ConcurrencyKey: "account:4", ProviderKey: "provider:azure"})
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Go(func() {
+			for range 4 {
+				if _, err := q.Claim(t.Context(), fmt.Sprint("worker-", i), time.Minute); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+	// Fill any capacity left by try-lock contention after the concurrent claims.
+	for range 4 {
+		if _, err := q.Claim(t.Context(), "final", time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var aws, azure, accounts int
+	if err := q.db.QueryRow(t.Context(), `SELECT count(*) FILTER(WHERE provider_key='provider:aws'),count(*) FILTER(WHERE provider_key='provider:azure'),count(DISTINCT concurrency_key) FROM jobs WHERE status='running'`).Scan(&aws, &azure, &accounts); err != nil {
+		t.Fatal(err)
+	}
+	if aws != 2 || azure != 1 || accounts != 3 {
+		t.Fatalf("combined limits: aws=%d azure=%d accounts=%d", aws, azure, accounts)
+	}
 }
 
 func claim(t *testing.T, q *Queue, worker string) *Job {

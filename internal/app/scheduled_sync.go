@@ -33,7 +33,7 @@ func NewCollector(ctx context.Context, db *pgxpool.Pool, config syncer.Config) (
 		rc.Close()
 		return nil, err
 	}
-	return &App{DB: db, Redis: rc, Vault: vault, Sync: syncer.New(db, config), accountSlots: make(chan struct{}, 4), regionSlots: make(chan struct{}, 6)}, nil
+	return &App{DB: db, Redis: rc, Vault: vault, Sync: syncer.New(db, config), regionSlots: make(chan struct{}, 6)}, nil
 }
 
 // DiscoverSyncRegions uses existing region APIs only for an all-regions account.
@@ -91,8 +91,8 @@ func (a *App) DiscoverSyncRegions(ctx context.Context, account syncer.Account) m
 	}
 }
 
-// CollectScheduled only delegates to today's collectors under their existing
-// Valkey locks. TODO(T14): replace the '*' service jobs with regional collectors;
+// CollectScheduled delegates to today's collectors. Compute uses durable lease
+// fencing; the other services keep their existing Valkey locks. TODO(T14): replace the '*' service jobs with regional collectors;
 // do not filter or rewrite whole-account snapshots in this bridge.
 func (a *App) CollectScheduled(ctx context.Context, p syncer.Payload, account syncer.Account) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -101,18 +101,10 @@ func (a *App) CollectScheduled(ctx context.Context, p syncer.Payload, account sy
 	var err error
 	switch p.Service {
 	case syncer.Compute:
-		collected := false
-		err = a.withAccountCollectorLock(ctx, p.WorkspaceID, p.AccountID, func(locked context.Context) error {
-			collected = true
-			if p.Region == syncer.AccountWide {
-				return a.collectGlobal(locked, p.WorkspaceID, p.AccountID, account.Provider, account.Regions)
-			}
-			return a.collectRegion(locked, p.WorkspaceID, p.AccountID, account.Provider, p.Region)
-		})
-		// The legacy lock can skip this callback after a manual account refresh.
-		// That refresh may have failed this region; retry rather than claim success.
-		if err == nil && !collected {
-			err = errors.New("Collection deferred after concurrent refresh")
+		if p.Region == syncer.AccountWide {
+			err = a.collectGlobal(ctx, p.WorkspaceID, p.AccountID, account.Provider, account.Regions)
+		} else {
+			err = a.collectRegion(ctx, p.WorkspaceID, p.AccountID, account.Provider, p.Region)
 		}
 	case syncer.Desktops:
 		err = a.withServiceCollectorLock(ctx, p.WorkspaceID, p.AccountID, "eds", func(locked context.Context) error {

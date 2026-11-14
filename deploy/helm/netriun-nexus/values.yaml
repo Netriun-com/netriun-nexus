@@ -12,6 +12,7 @@ sync:
   emptyIntervalSeconds: 21600
   tickIntervalSeconds: 10
   reconcileIntervalSeconds: 60
+  discoveryIntervalSeconds: 3600
   jobRetentionSeconds: 604800
 
 # These limits also configure the combined Deployment when enabled is false.

@@ -46,11 +46,9 @@ type App struct {
 	backgroundCtx              context.Context
 	backgroundStop             context.CancelFunc
 	backgroundWG               sync.WaitGroup
-	refreshRunner              func(context.Context, int64, []int64) error
 	edsRefreshRunner           func(context.Context, int64, int64, string, string) error
 	ossRefreshRunner           func(context.Context, int64, int64) error
 	securityGroupRefreshRunner func(context.Context, int64, int64) error
-	accountSlots               chan struct{}
 	regionSlots                chan struct{}
 }
 type User struct {
@@ -103,10 +101,9 @@ func New(ctx context.Context) (*App, error) {
 		return fail(err)
 	}
 	backgroundCtx, backgroundStop := context.WithCancel(context.Background())
-	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, accountSlots: make(chan struct{}, 4), regionSlots: make(chan struct{}, 6)}
+	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, regionSlots: make(chan struct{}, 6)}
 	a.Policy = &PolicyEngine{DB: db}
 	a.Sync = syncer.New(db, syncConfig)
-	a.refreshRunner = a.collectAccounts
 	a.edsRefreshRunner = a.refreshEDSService
 	a.ossRefreshRunner = a.collectOSSBuckets
 	a.securityGroupRefreshRunner = a.collectSecurityGroups
