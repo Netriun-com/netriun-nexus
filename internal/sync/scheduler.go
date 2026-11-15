@@ -9,7 +9,8 @@ import (
 )
 
 // Scheduler periodically reconciles account scopes, removes one batch of old
-// terminal jobs, and enqueues due scopes. Run belongs only in worker/all roles.
+// terminal jobs, and enqueues due sync and audit-retention jobs. Run belongs
+// only in worker/all roles.
 // A cancelled context stops maintenance immediately; jobs already committed
 // remain in the durable queue. Multiple replicas may run the same loop.
 type Scheduler struct {
@@ -33,6 +34,9 @@ func (s Scheduler) Run(ctx context.Context) {
 		tick, stop := context.WithTimeout(ctx, 30*time.Second)
 		if _, err := s.Store.EnqueueDue(tick); err != nil && tick.Err() == nil {
 			slog.Warn("sync scheduling failed")
+		}
+		if _, err := s.Store.EnqueueAuditRetention(tick); err != nil && tick.Err() == nil {
+			slog.Warn("audit retention scheduling failed")
 		}
 		stop()
 		select {

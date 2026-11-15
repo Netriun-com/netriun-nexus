@@ -84,6 +84,7 @@ func runService(parent context.Context, cfg config, handlers worker.Registry) er
 		}
 		var background []func(context.Context)
 		if _, scheduled := handlers[syncer.JobKind]; scheduled {
+			handlers[syncer.AuditRetentionJobKind] = store.AuditRetentionHandler()
 			scheduler := syncer.Scheduler{Store: store, Reconcile: func(ctx context.Context) error { return store.Reconcile(ctx, nil) }, Discovery: discover}
 			background = append(background, scheduler.Run)
 		}

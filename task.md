@@ -412,6 +412,8 @@ scheduler accurately.
 
 ### T16. Run audit retention as a scheduled job
 
+- [x] Implemented in this PR: per-workspace durable retention jobs, bounded batches, configurable cadence, and PostgreSQL coverage.
+
 Why: audit deletion only runs at the end of `collectAccounts`
 (`internal/app/collector.go`), so with no refreshes, retention never runs.
 

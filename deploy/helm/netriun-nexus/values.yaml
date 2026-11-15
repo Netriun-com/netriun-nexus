@@ -13,6 +13,8 @@ sync:
   tickIntervalSeconds: 10
   reconcileIntervalSeconds: 60
   discoveryIntervalSeconds: 3600
+  # Per-workspace audit cleanup cadence; uses settings.audit_retention_days.
+  auditRetentionIntervalSeconds: 86400
   jobRetentionSeconds: 604800
 
 # These limits also configure the combined Deployment when enabled is false.
