@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/netriun/nexus/internal/secure"
 	"log/slog"
 	"net"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/netriun/nexus/internal/cloud"
-	"github.com/netriun/nexus/internal/secure"
 )
 
 var securityGroupIDPattern = regexp.MustCompile(`^sg-[A-Za-z0-9-]{1,128}$`)
@@ -37,14 +37,6 @@ type securityGroupRefreshJob struct {
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
 	DurationMS    int64      `json:"duration_ms,omitempty"`
 	Error         string     `json:"error,omitempty"`
-}
-
-func securityGroupRefreshJobKey(workspaceID int64, jobID string) string {
-	return fmt.Sprintf("ecs:security-groups:refresh:job:%d:%s", workspaceID, jobID)
-}
-
-func securityGroupRefreshScopeKey(workspaceID, accountID int64) string {
-	return fmt.Sprintf("ecs:security-groups:refresh:scope:%d:%d", workspaceID, accountID)
 }
 
 func (a *App) securityGroupAccount(w http.ResponseWriter, r *http.Request, mode string) (int64, bool) {
@@ -113,226 +105,47 @@ func (a *App) instanceSecurityGroups(ctx context.Context, workspaceID, accountID
 	return result
 }
 
-func (a *App) saveSecurityGroupRefreshJob(ctx context.Context, job securityGroupRefreshJob) error {
-	raw, err := json.Marshal(job)
+func (a *App) collectSecurityGroups(ctx context.Context, workspaceID, accountID int64, region string) error {
+	client, err := a.alibabaClient(ctx, workspaceID, accountID, region)
 	if err != nil {
 		return err
 	}
-	return a.Redis.Set(ctx, securityGroupRefreshJobKey(job.WorkspaceID, job.ID), raw, refreshJobTTL).Err()
-}
-
-func (a *App) loadSecurityGroupRefreshJob(ctx context.Context, workspaceID int64, jobID string) (securityGroupRefreshJob, error) {
-	var job securityGroupRefreshJob
-	raw, err := a.Redis.Get(ctx, securityGroupRefreshJobKey(workspaceID, jobID)).Bytes()
+	items, err := cloud.AlibabaSecurityGroups(ctx, client, region)
 	if err != nil {
-		return job, err
-	}
-	err = json.Unmarshal(raw, &job)
-	return job, err
-}
-
-func (a *App) refreshSecurityGroups(w http.ResponseWriter, r *http.Request) {
-	accountID, ok := a.securityGroupAccount(w, r, "view")
-	if !ok {
-		return
-	}
-	u := current(r)
-	scopeKey := securityGroupRefreshScopeKey(u.WorkspaceID, accountID)
-	if existingID, err := a.Redis.Get(r.Context(), scopeKey).Result(); err == nil {
-		if existing, loadErr := a.loadSecurityGroupRefreshJob(r.Context(), u.WorkspaceID, existingID); loadErr == nil && (existing.Status == "queued" || existing.Status == "running") {
-			write(w, http.StatusAccepted, existing)
-			return
-		}
-	}
-	job := securityGroupRefreshJob{ID: secure.Token(), WorkspaceID: u.WorkspaceID, RequestedBy: u.ID, RequestedName: u.Username, AccountID: accountID, Status: "queued", CreatedAt: time.Now().UTC()}
-	raw, err := json.Marshal(job)
-	if err != nil {
-		problem(w, http.StatusServiceUnavailable, "Could not queue security group refresh")
-		return
-	}
-	claimedID, err := a.Redis.Eval(r.Context(), `local existing=redis.call('GET',KEYS[1]); if existing then return existing end; redis.call('SET',KEYS[1],ARGV[1],'EX',600); redis.call('SET',KEYS[2],ARGV[2],'EX',3600); return ARGV[1]`, []string{scopeKey, securityGroupRefreshJobKey(u.WorkspaceID, job.ID)}, job.ID, raw).Text()
-	if err != nil {
-		problem(w, http.StatusServiceUnavailable, "Could not queue security group refresh")
-		return
-	}
-	if claimedID != job.ID {
-		existing, loadErr := a.loadSecurityGroupRefreshJob(r.Context(), u.WorkspaceID, claimedID)
-		if loadErr != nil {
-			problem(w, http.StatusConflict, "A security group refresh is already being queued")
-			return
-		}
-		write(w, http.StatusAccepted, existing)
-		return
-	}
-	a.audit(r, "ecs.security_groups.refresh_queued", job.ID, map[string]any{"account_id": accountID})
-	a.backgroundWG.Add(1)
-	go a.runSecurityGroupRefresh(job, scopeKey)
-	write(w, http.StatusAccepted, job)
-}
-
-func (a *App) runSecurityGroupRefresh(job securityGroupRefreshJob, scopeKey string) {
-	defer a.backgroundWG.Done()
-	ctx, cancel := context.WithTimeout(a.backgroundCtx, 10*time.Minute)
-	defer cancel()
-	started := time.Now().UTC()
-	job.Status, job.StartedAt = "running", &started
-	_ = a.saveSecurityGroupRefreshJob(ctx, job)
-	err := a.withServiceCollectorLock(ctx, job.WorkspaceID, job.AccountID, "ecs-security-groups", func(lockCtx context.Context) error {
-		return a.securityGroupRefreshRunner(lockCtx, job.WorkspaceID, job.AccountID)
-	})
-	completed := time.Now().UTC()
-	job.CompletedAt, job.DurationMS = &completed, completed.Sub(started).Milliseconds()
-	if err != nil {
-		job.Status, job.Error = "failed", "Alibaba ECS security group refresh failed; check RAM permissions and selected regions"
-		slog.Warn("Alibaba ECS security group refresh failed", "workspace_id", job.WorkspaceID, "account_id", job.AccountID, "error", err)
-	} else {
-		job.Status = "completed"
-	}
-	saveCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
-	defer stop()
-	_ = a.saveSecurityGroupRefreshJob(saveCtx, job)
-	_, _ = a.Redis.Eval(saveCtx, `if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end`, []string{scopeKey}, job.ID).Result()
-	_ = a.record(saveCtx, job.WorkspaceID, job.RequestedBy, job.RequestedName, "ecs.security_groups.refresh_completed", job.ID, map[string]any{"status": job.Status, "duration_ms": job.DurationMS, "account_id": job.AccountID})
-}
-
-func (a *App) securityGroupRefreshStatus(w http.ResponseWriter, r *http.Request) {
-	accountID, ok := a.securityGroupAccount(w, r, "view")
-	if !ok {
-		return
-	}
-	jobID := r.PathValue("jobID")
-	if !validRefreshJobID(jobID) {
-		problem(w, http.StatusBadRequest, "Invalid refresh job ID")
-		return
-	}
-	job, err := a.loadSecurityGroupRefreshJob(r.Context(), current(r).WorkspaceID, jobID)
-	if err != nil || job.AccountID != accountID {
-		problem(w, http.StatusNotFound, "Refresh job not found")
-		return
-	}
-	write(w, http.StatusOK, job)
-}
-
-func (a *App) collectSecurityGroups(ctx context.Context, workspaceID, accountID int64) error {
-	var regions []string
-	if err := a.DB.QueryRow(ctx, `SELECT regions FROM cloud_accounts WHERE id=$1 AND workspace_id=$2 AND provider='alibaba'`, accountID, workspaceID).Scan(&regions); err != nil {
 		return err
 	}
-	if len(regions) == 0 {
-		client, err := a.alibabaClient(ctx, workspaceID, accountID, "cn-hangzhou")
-		if err != nil {
-			return err
-		}
-		regions, err = cloud.AlibabaRegions(ctx, client)
-		if err != nil {
-			return err
-		}
-	}
-	previousGroups := map[string]cloud.AlibabaSecurityGroup{}
-	if previous, exists, snapshotErr := a.serviceSnapshot(ctx, workspaceID, accountID, "ecs.security_groups", ""); snapshotErr == nil && exists {
-		encoded, _ := json.Marshal(previous["data"])
-		var previousItems []cloud.AlibabaSecurityGroup
-		if json.Unmarshal(encoded, &previousItems) == nil {
-			for _, item := range previousItems {
-				previousGroups[item.Region+":"+item.ID] = item
-			}
-		}
-	}
-	type regionResult struct {
-		region string
-		items  []cloud.AlibabaSecurityGroup
-		err    error
-	}
-	results := make(chan regionResult, len(regions))
-	ruleSlots := make(chan struct{}, 8)
+	slots := make(chan struct{}, 8)
+	failures := make(chan error, len(items))
 	var wg sync.WaitGroup
-	for _, region := range regions {
-		region := region
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for index := range items {
+		wg.Go(func() {
 			select {
-			case a.regionSlots <- struct{}{}:
+			case slots <- struct{}{}:
 			case <-ctx.Done():
-				results <- regionResult{region: region, err: ctx.Err()}
+				failures <- ctx.Err()
 				return
 			}
-			defer func() { <-a.regionSlots }()
-			client, err := a.alibabaClient(ctx, workspaceID, accountID, region)
+			defer func() { <-slots }()
+			rules, err := cloud.AlibabaSecurityGroupRules(ctx, client, region, items[index].ID)
 			if err != nil {
-				results <- regionResult{region: region, err: err}
+				failures <- err
 				return
 			}
-			items, err := cloud.AlibabaSecurityGroups(ctx, client, region)
-			if err == nil {
-				var ruleWG sync.WaitGroup
-				for index := range items {
-					index := index
-					ruleWG.Add(1)
-					go func() {
-						defer ruleWG.Done()
-						select {
-						case ruleSlots <- struct{}{}:
-						case <-ctx.Done():
-							return
-						}
-						defer func() { <-ruleSlots }()
-						rules, ruleErr := cloud.AlibabaSecurityGroupRules(ctx, client, region, items[index].ID)
-						if ruleErr != nil {
-							slog.Warn("Alibaba security group rules unavailable", "account_id", accountID, "region", region, "security_group_id", items[index].ID, "error", ruleErr)
-							if previous, found := previousGroups[region+":"+items[index].ID]; found {
-								items[index].Rules, items[index].RulesAvailable = previous.Rules, previous.RulesAvailable
-							} else {
-								items[index].Rules = []cloud.AlibabaSecurityGroupRule{}
-							}
-							return
-						}
-						items[index].Rules, items[index].RulesAvailable = rules, true
-					}()
-				}
-				ruleWG.Wait()
-			}
-			results <- regionResult{region: region, items: items, err: err}
-		}()
+			items[index].Rules, items[index].RulesAvailable = rules, true
+		})
 	}
 	wg.Wait()
-	close(results)
-	items := []cloud.AlibabaSecurityGroup{}
-	failedRegions := []string{}
-	successfulRegions := 0
-	for result := range results {
-		if result.err != nil {
-			failedRegions = append(failedRegions, result.region)
-			continue
-		}
-		successfulRegions++
-		items = append(items, result.items...)
+	close(failures)
+	var failed []error
+	for err := range failures {
+		failed = append(failed, err)
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if err := errors.Join(failed...); err != nil {
+		return err
 	}
-	if successfulRegions == 0 && len(regions) > 0 {
-		return errors.New("security group collection failed in every selected region")
-	}
-	if len(failedRegions) > 0 {
-		failed := make(map[string]bool, len(failedRegions))
-		for _, failedRegion := range failedRegions {
-			failed[failedRegion] = true
-		}
-		for _, item := range previousGroups {
-			if failed[item.Region] {
-				items = append(items, item)
-			}
-		}
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Region == items[j].Region {
-			return items[i].Name < items[j].Name
-		}
-		return items[i].Region < items[j].Region
-	})
-	sort.Strings(failedRegions)
-	return a.saveServiceSnapshot(ctx, workspaceID, accountID, "ecs.security_groups", "", map[string]any{"data": items, "failed_regions": failedRegions})
+
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, "ecs.security_groups", region, map[string]any{"data": items, "failed_regions": []string{}})
 }
 
 type securityGroupRuleRequest struct {

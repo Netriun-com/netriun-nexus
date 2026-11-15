@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/jobs"
 )
 
-var ErrNoScopes = errors.New("No enabled compute scope is available. Check the region selection or wait for region discovery.")
+var ErrNoScopes = errors.New("No enabled sync scope is available. Check the region selection or wait for region discovery.")
 var ErrAccountAccess = errors.New("Cloud account access required")
 
 type RefreshFailure struct {
@@ -28,6 +29,8 @@ type RefreshFailure struct {
 // Refresh preserves the legacy inventory polling contract. ID identifies a
 // receipt containing durable sync job IDs, not another executable job.
 type Refresh struct {
+	Service        string           `json:"-"`
+	Region         string           `json:"-"`
 	ID             string           `json:"id"`
 	AccountIDs     []int64          `json:"account_ids"`
 	Status         string           `json:"status"`
@@ -43,6 +46,17 @@ type Refresh struct {
 // on the HTTP path. The caller must authorize ids. Missing scopes fail the whole
 // request atomically, allowing the UI to show a discovery/selection error.
 func (s *Store) RefreshCompute(ctx context.Context, workspace int64, ids []int64, region string) (Refresh, error) {
+	return s.RefreshService(ctx, workspace, ids, Compute, region)
+}
+
+func (s *Store) RefreshService(ctx context.Context, workspace int64, ids []int64, service, region string) (Refresh, error) {
+	scope := region
+	if scope == "all" {
+		scope = ""
+	}
+	if service == Users {
+		scope = cloud.EDSUserRegion(scope)
+	}
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
@@ -53,8 +67,8 @@ func (s *Store) RefreshCompute(ctx context.Context, workspace int64, ids []int64
 	defer tx.Rollback(context.Background())
 	rows, err := tx.Query(ctx, `SELECT s.id,a.workspace_id,s.account_id,s.service,s.region,a.provider
         FROM sync_state s JOIN cloud_accounts a ON a.id=s.account_id
-        WHERE a.workspace_id=$1 AND a.id=ANY($2) AND s.enabled AND s.service='compute'
-          AND ($3='' OR s.region=$3 OR s.region='*') ORDER BY s.id`, workspace, ids, region)
+        WHERE a.workspace_id=$1 AND a.id=ANY($2) AND s.enabled AND s.service=$4 AND NOT(s.region='*' AND s.service IN ('eds.users','ecs.security_groups'))
+          AND ($3='' OR s.region=$3 OR s.region='*') ORDER BY s.id`, workspace, ids, scope, service)
 	if err != nil {
 		return Refresh{}, err
 	}
@@ -90,24 +104,32 @@ func (s *Store) RefreshCompute(ctx context.Context, workspace int64, ids []int64
 		jobIDs = append(jobIDs, j.ID)
 	}
 	slices.Sort(jobIDs)
-	hash := sha256.Sum256([]byte(fmt.Sprint(workspace, jobIDs)))
+	hashRegion := region
+	if service == Compute {
+		hashRegion = ""
+	}
+	hash := sha256.Sum256([]byte(fmt.Sprint(workspace, service, hashRegion, jobIDs)))
 	id := base64.RawURLEncoding.EncodeToString(hash[:])
-	_, err = tx.Exec(ctx, `INSERT INTO inventory_refreshes(id,workspace_id,account_ids,job_ids) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING`, id, workspace, ids, jobIDs)
+	_, err = tx.Exec(ctx, `INSERT INTO inventory_refreshes(id,workspace_id,account_ids,job_ids,service,region) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`, id, workspace, ids, jobIDs, service, region)
 	if err != nil {
 		return Refresh{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Refresh{}, err
 	}
-	return s.RefreshStatus(ctx, workspace, id, ids)
+	return s.ServiceRefreshStatus(ctx, workspace, id, ids, service)
 }
 
 // RefreshStatus filters the receipt AND every underlying job by workspace and
 // account access. It never looks up an executable job by ID alone.
 func (s *Store) RefreshStatus(ctx context.Context, workspace int64, id string, allowed []int64) (Refresh, error) {
+	return s.ServiceRefreshStatus(ctx, workspace, id, allowed, Compute)
+}
+
+func (s *Store) ServiceRefreshStatus(ctx context.Context, workspace int64, id string, allowed []int64, service string) (Refresh, error) {
 	out := Refresh{ID: id, Status: "queued", FailedAccounts: []RefreshFailure{}}
 	var jobIDs []int64
-	err := s.DB.QueryRow(ctx, `SELECT account_ids,job_ids,created_at FROM inventory_refreshes WHERE id=$1 AND workspace_id=$2`, id, workspace).Scan(&out.AccountIDs, &jobIDs, &out.CreatedAt)
+	err := s.DB.QueryRow(ctx, `SELECT account_ids,job_ids,created_at,service,region FROM inventory_refreshes WHERE id=$1 AND workspace_id=$2 AND (service=$3 OR ($3='eds' AND service IN ('eds.desktops','eds.users')))`, id, workspace, service).Scan(&out.AccountIDs, &jobIDs, &out.CreatedAt, &out.Service, &out.Region)
 	if err != nil {
 		return out, err
 	}
@@ -119,7 +141,7 @@ func (s *Store) RefreshStatus(ctx context.Context, workspace int64, id string, a
 	rows, err := s.DB.Query(ctx, `SELECT j.status,j.attempts,j.started_at,j.updated_at,(j.payload->>'account_id')::bigint,j.last_error
         FROM jobs j JOIN cloud_accounts a ON a.id=(j.payload->>'account_id')::bigint AND a.workspace_id=$2
         WHERE j.id=ANY($1) AND j.kind=$3 AND j.payload->>'workspace_id'=$2::bigint::text
-          AND j.payload->>'service'='compute' AND a.id=ANY($4) ORDER BY j.id`, jobIDs, workspace, JobKind, allowed)
+          AND j.payload->>'service'=$5 AND a.id=ANY($4) ORDER BY j.id`, jobIDs, workspace, JobKind, allowed, out.Service)
 	if err != nil {
 		return out, err
 	}

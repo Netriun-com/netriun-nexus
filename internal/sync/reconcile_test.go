@@ -73,7 +73,7 @@ func TestAccountScopeReconciliation(t *testing.T) {
 	}
 	changeAccount(t, s, account, "alibaba", []string{"cn-hangzhou", "ap-southeast-1"})
 	before := scopes(t, s, account)
-	if len(before) != 7 {
+	if len(before) != 9 {
 		t.Fatalf("Alibaba scopes: %v", before)
 	}
 	changeAccount(t, s, account, "alibaba", []string{"cn-shanghai"})
@@ -81,7 +81,7 @@ func TestAccountScopeReconciliation(t *testing.T) {
 	if len(after) != 5 || after["compute:cn-shanghai"] == 0 || after["eds.desktops:cn-shanghai"] == 0 {
 		t.Fatalf("Alibaba region change: %v", after)
 	}
-	for _, service := range []string{syncer.Users, syncer.Buckets, syncer.SecurityGroups} {
+	for _, service := range []string{syncer.Buckets} {
 		key := service + ":*"
 		if after[key] == 0 || after[key] != before[key] {
 			t.Fatalf("account-wide row changed: %s", key)

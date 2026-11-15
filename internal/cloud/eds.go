@@ -87,10 +87,7 @@ func newEDSClients(region, key, secret, token, endpoint, protocol string) (*EDSC
 	// official SDK only publishes cn-shanghai (China mainland) and
 	// ap-southeast-1 (international) endpoints. Deriving an endpoint from a
 	// desktop region such as cn-hongkong produces a non-existent DNS name.
-	userRegion := "ap-southeast-1"
-	if strings.HasPrefix(region, "cn-") && region != "cn-hongkong" {
-		userRegion = "cn-shanghai"
-	}
+	userRegion := EDSUserRegion(region)
 	users, err := edsuser.NewClient(config(userRegion))
 	if err != nil {
 		return nil, err
@@ -527,4 +524,12 @@ func stringPointers(values []string) []*string {
 
 func stringPointer(value string) *string {
 	return &value
+}
+
+// EDSUserRegion returns the directory endpoint serving a desktop region.
+func EDSUserRegion(region string) string {
+	if strings.HasPrefix(region, "cn-") && region != "cn-hongkong" {
+		return "cn-shanghai"
+	}
+	return "ap-southeast-1"
 }

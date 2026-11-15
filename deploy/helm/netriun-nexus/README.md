@@ -5,9 +5,8 @@ PostgreSQL and Valkey services. For the current local cluster,
 `values-local.yaml` also deploys single-replica PostgreSQL and Valkey StatefulSets
 with retained host-path volumes on `k8s-node01`.
 
-Compute refresh jobs, polling receipts and leases live in PostgreSQL and survive
-application rollouts. Valkey still stores sessions and short-lived EDS/OSS/security-group
-refresh state and service leases; keep it available during rollouts.
+All collection jobs, polling receipts and leases live in PostgreSQL and survive
+application rollouts. Valkey still stores HTTP sessions and rate limits; keep it available to web pods.
 
 Create the application Secret before installation. Do not commit literal
 credentials to a values file:
@@ -71,10 +70,9 @@ controls its resource requests/limits. Both modes share these settings:
 | `worker.shutdownTimeoutSeconds` | `NEXUS_SHUTDOWN_TIMEOUT` | `15` seconds |
 
 Per-key limits apply across all worker processes and must match between replicas.
-Compute jobs consume both account and provider limits across workers. Other job
+All scheduled collection jobs consume both account and provider limits across workers. Other job
 kinds retain their existing single-key behavior. Unknown kinds remain queued.
-Scheduled sync runs in worker/all roles. Manual compute refresh uses the same
-durable jobs; EDS/OSS/security-group runners migrate in T14.
+Scheduled sync runs in worker/all roles. Manual compute, EDS, OSS, and security-group refreshes use the same durable jobs.
 
 Worker startup, liveness, and readiness probes use `GET /healthz` on its pod's
 HTTP port. It reports whether the worker runtime is active, not whether the
@@ -94,9 +92,11 @@ for handler requirements and retry behavior.
 
 ## Scheduled collection settings
 
-Workers now need DATABASE_URL, REDIS_URL, and ENCRYPTION_KEY from the existing
-Secret. EDS/OSS/security-group collectors still need Valkey coordination; compute
-uses queue leases and transactional write fencing. The scheduler never runs in serve mode.
+Workers need DATABASE_URL and ENCRYPTION_KEY from the existing Secret.
+REDIS_URL is optional and unused in worker mode. The shared Secret may still
+contain it for web pods, which require Valkey for sessions and rate limits.
+All collectors use queue leases and transactional snapshot fencing.
+The scheduler never runs in serve mode.
 
 All `sync` values are positive integer seconds, rendered as Go durations:
 
@@ -114,10 +114,11 @@ All `sync` values are positive integer seconds, rendered as Go durations:
 | `sync.jobRetentionSeconds` | `NEXUS_JOB_RETENTION` | 604800 |
 
 Use the same settings for web/account saves and every worker replica. The `*`
-region sentinel denotes account-wide Azure/GCP compute and Alibaba OSS, security
-groups, and EDS users. These scopes retain their service interval and never use
-the six-hour empty-region delay. AWS/Alibaba compute and EDS desktops have
-regional rows; all-region accounts need successful worker region discovery.
+region sentinel denotes global Azure/GCP compute and Alibaba OSS ListBuckets
+(which has no region filter). These scopes never use the six-hour empty delay.
+AWS/Alibaba compute, EDS desktops, and security groups have regional rows;
+EDS users use the cn-shanghai or ap-southeast-1 directory endpoint scope.
+All-region accounts need successful worker region discovery.
 Database reconciliation backfills existing accounts after upgrade and preserves
 disabled rows. Provider region discovery has persisted hourly due times per
 account and a PostgreSQL advisory lock shared across replicas; due-time polling
@@ -131,12 +132,13 @@ worker/all roles schedule and execute these durable jobs; serve never does.
 Each job uses the workspace's `settings.audit_retention_days` and deletes expired
 audit rows in batches of at most 500. No cloud accounts or refreshes are needed.
 
-TODO(T14): replace Alibaba account-wide rows once collectors are regional.
-EDS users may also refresh desktops, but does not update desktop sync_state rows.
-Compute refresh uses durable jobs and the existing polling response shape;
-EDS/OSS/security-group runners and page sync triggers remain unchanged. See
-[scheduled sync](../../../README.md#scheduled-sync) for deduplication, ownership,
-error handling, empty-region behavior, and transitional snapshot limitations.
+Reconciliation migrates legacy users/security-group `*` scopes and preserves
+stored snapshot history. Users jobs no longer refresh desktops. All manual
+refreshes use durable jobs and retain their polling contracts; page sync triggers
+remain unchanged. Stop pre-T14 processes before rolling out this version because
+they still contain unfenced Valkey runners. Old Valkey refresh IDs are not migrated.
+See [scheduled sync](../../../README.md#scheduled-sync) for ownership, errors,
+regional migration, and OSS complete-snapshot behavior.
 
 Render and inspect without deploying:
 

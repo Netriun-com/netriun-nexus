@@ -386,6 +386,8 @@ inventory integration tests still pass.
 
 ### T14. Move EDS, OSS, and security group refresh onto the queue
 
+- [x] Done — durable service refreshes, regional snapshots, and lease fencing.
+
 Same pattern as T13 for `eds_refresh.go`, OSS, and security groups: one job per
 account + service + region, existing refresh endpoints enqueue high-priority
 jobs and keep their response shapes, errors go to `sync_state`. Remove the old

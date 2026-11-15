@@ -8,12 +8,8 @@ import (
 	syncer "github.com/netriun/nexus/internal/sync"
 	"net/http"
 	"strings"
-	"time"
 	"unicode"
 )
-
-// Still used by the EDS/OSS/security-group Valkey runners until T14.
-const refreshJobTTL = time.Hour
 
 type inventoryRefreshJob = syncer.Refresh
 

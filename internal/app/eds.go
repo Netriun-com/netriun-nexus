@@ -8,9 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/netriun/nexus/internal/cloud"
@@ -72,89 +70,6 @@ func (a *App) edsDesktops(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, payload)
-}
-
-func (a *App) edsDesktopsAllRegions(w http.ResponseWriter, r *http.Request) {
-	accountID, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	if !a.accountAccess(r, accountID, "view") {
-		problem(w, 403, "Cloud account access required")
-		return
-	}
-	u := current(r)
-	credentials, err := a.credentials(r.Context(), u.WorkspaceID, accountID, "alibaba")
-	if err != nil {
-		problem(w, 400, "The selected account is not an Alibaba Cloud connection")
-		return
-	}
-	seedRegion := "cn-hangzhou"
-	if err = a.DB.QueryRow(r.Context(), `SELECT COALESCE((SELECT min(region) FROM instances WHERE account_id=$1), NULLIF(regions[1],''), 'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, accountID, u.WorkspaceID).Scan(&seedRegion); err != nil {
-		dbError(w, err)
-		return
-	}
-	seed, err := cloud.EDSClient(seedRegion, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-	if err != nil {
-		edsProviderError(w, "describe_desktops_all", accountID, seedRegion, err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
-	defer cancel()
-	regions, err := cloud.EDSRegions(ctx, seed.Desktop)
-	if err != nil {
-		edsProviderError(w, "describe_desktops_all", accountID, seedRegion, err)
-		return
-	}
-	regionItems := make([][]*cloud.EDSDesktop, len(regions))
-	failed := []string{}
-	succeeded := 0
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	limit := make(chan struct{}, 6)
-	for i, region := range regions {
-		i, region := i, region
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			select {
-			case limit <- struct{}{}:
-			case <-ctx.Done():
-				mu.Lock()
-				failed = append(failed, region.ID)
-				mu.Unlock()
-				return
-			}
-			defer func() { <-limit }()
-			client, clientErr := cloud.EDSClient(region.ID, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-			if clientErr == nil {
-				regionItems[i], clientErr = cloud.EDSDesktops(ctx, client.Desktop, region.ID)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if clientErr != nil {
-				failed = append(failed, region.ID)
-				slog.Warn("Alibaba EDS region list failed", "account_id", accountID, "region", region.ID, "error", clientErr)
-				return
-			}
-			succeeded++
-		}()
-	}
-	wg.Wait()
-	if succeeded == 0 && len(regions) > 0 {
-		problem(w, 502, "Alibaba EDS could not list desktops in any region")
-		return
-	}
-	items := []*cloud.EDSDesktop{}
-	for _, regionResult := range regionItems {
-		items = append(items, regionResult...)
-	}
-	sort.Strings(failed)
-	if err = a.saveServiceSnapshot(r.Context(), u.WorkspaceID, accountID, "eds.desktops", "all", map[string]any{"data": items, "failed_regions": failed}); err != nil {
-		dbError(w, err)
-		return
-	}
-	write(w, 200, map[string]any{"data": items, "failed_regions": failed})
 }
 
 func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
