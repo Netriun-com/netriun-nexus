@@ -76,7 +76,7 @@ func TestIntegration(t *testing.T) {
 	if err = a.DB.QueryRow(ctx, "SELECT to_regclass('service_snapshots') IS NOT NULL").Scan(&snapshotTable); err != nil || !snapshotTable {
 		t.Fatal("live inventory snapshot migration was not applied")
 	}
-	if err = a.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='settings' AND column_name='collector_interval_minutes')").Scan(&legacyInterval); err != nil || legacyInterval {
+	if err = a.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND table_schema=current_schema() AND column_name='collector_interval_minutes')").Scan(&legacyInterval); err != nil || legacyInterval {
 		t.Fatal("legacy collection interval was not removed")
 	}
 	if _, err = a.DB.Exec(ctx, "TRUNCATE workspaces RESTART IDENTITY CASCADE"); err != nil {

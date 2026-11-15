@@ -21,3 +21,19 @@ go run ./cmd/migrate-legacy -source /absolute/path/to/backup.db -apply
 7. Start the app, sign in with a legacy administrator, review groups and accounts, and request collection.
 
 The source is never modified. Import uses a single PostgreSQL transaction with exclusive table locks. Invalid references and unsupported password hashes abort the import. Dry runs roll back records and sequence changes. Legacy creation timestamps on users/groups/accounts are reset to import time; audit timestamps are preserved and interpreted as UTC where no offset exists. Legacy logrotate settings are not imported. Back up the target and encryption key before future changes.
+
+To run the opt-in importer test, install the `sqlite3` CLI and point
+`TEST_MIGRATION_DATABASE_URL` at a dedicated, disposable PostgreSQL database
+whose name contains `ccmp_test`:
+
+```sh
+TEST_MIGRATION_DATABASE_URL='postgres://ccmp:testing-only@localhost:5432/ccmp_test_migration?sslmode=disable' \
+go test -v -count=1 ./cmd/migrate-legacy -run '^TestMigration$'
+```
+
+The test initializes the schema with the same embedded, numbered migrations
+and migration runner as the application, then truncates workspaces and imported
+tables and creates a bootstrap workspace fixture.
+Never point it at an application database or run it concurrently with other
+database tests. CI runs the frontend regression suite with
+`node --test scripts/test-navigation.cjs`; the importer test remains opt-in.
