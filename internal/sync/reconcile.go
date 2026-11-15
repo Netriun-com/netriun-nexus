@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/netriun/nexus/internal/cloud"
 )
 
 // Discovery supplies regional scopes only for accounts whose region selection
@@ -108,14 +109,44 @@ func (s *Store) reconcileAccount(ctx context.Context, tx pgx.Tx, id int64, found
 		if len(a.Regions) == 0 {
 			desired[Desktops] = found[Desktops]
 		}
-		for _, service := range []string{Users, Buckets, SecurityGroups} {
-			desired[service] = []string{AccountWide}
+
+		desired[Buckets] = []string{AccountWide}
+		desired[SecurityGroups] = desired[Compute]
+		directories := desired[Desktops]
+		// Upgrades already have discovered compute/desktop regions. Reuse
+		// those scopes without waiting for the next hourly provider discovery.
+		if desired[SecurityGroups] == nil {
+			var known []string
+			if err := tx.QueryRow(ctx, `SELECT array_agg(region ORDER BY region) FROM sync_state WHERE account_id=$1 AND service=$2 AND region<>'*'`, id, Compute).Scan(&known); err != nil {
+				return err
+			}
+			desired[SecurityGroups] = known
 		}
+		if directories == nil {
+			if err := tx.QueryRow(ctx, `SELECT array_agg(region ORDER BY region) FROM sync_state WHERE account_id=$1 AND service=$2 AND region<>'*'`, id, Desktops).Scan(&directories); err != nil {
+				return err
+			}
+		}
+		if directories != nil {
+			desired[Users] = []string{}
+			for _, region := range directories {
+				directory := cloud.EDSUserRegion(region)
+				if !slices.Contains(desired[Users], directory) {
+					desired[Users] = append(desired[Users], directory)
+				}
+			}
+		} else {
+			desired[Users] = nil
+		}
+
 	}
 	services := make([]string, 0, len(desired))
 	for service, regions := range desired {
 		services = append(services, service)
 		if regions != nil {
+			if err := s.migrateServiceScopes(ctx, tx, a, service, regions); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(ctx, `DELETE FROM sync_state WHERE account_id=$1 AND service=$2 AND NOT(region=ANY($3::text[]))`, id, service, regions); err != nil {
 				return err
 			}

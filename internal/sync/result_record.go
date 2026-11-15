@@ -28,7 +28,7 @@ func (s *Store) recordResult(ctx context.Context, p Payload, j jobs.Job, message
 	}
 	tag, err := tx.Exec(ctx, `UPDATE sync_state SET
         last_success_at=CASE WHEN $4='' THEN clock_timestamp() ELSE last_success_at END,
-        last_error=$4,last_error_code=$5,empty=CASE WHEN $4='' THEN $6 ELSE empty END,
+        last_error=$4,last_error_code=$5,empty=CASE WHEN $4='' THEN $6 WHEN service='compute' THEN empty ELSE false END,
         "interval"=$7::bigint*interval '1 microsecond',next_due_at=clock_timestamp()+$7::bigint*interval '1 microsecond'
         WHERE id=$1 AND enabled AND last_job_id=$2 AND last_attempt=$3`, p.StateID, j.ID, j.Attempts, message, code, empty, interval.Microseconds())
 	if err != nil {

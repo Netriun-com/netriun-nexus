@@ -79,7 +79,6 @@ func runService(parent context.Context, cfg config, handlers worker.Registry) er
 			if err != nil {
 				return err
 			}
-			defer collector.Redis.Close()
 			discover = collector.DiscoverSyncRegions
 			handlers = worker.Registry{syncer.JobKind: store.Handler(collector.CollectScheduled)}
 		}

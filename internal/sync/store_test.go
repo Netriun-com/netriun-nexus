@@ -76,12 +76,32 @@ func addState(t *testing.T, s *syncer.Store, account int64) int64 {
 	return id
 }
 
+// claimReady polls like the worker: Claim may return nil while another test
+// schema briefly holds the database-wide account/provider advisory key. The
+// expected job must still be claimed before the deadline; no assertion is skipped.
+func claimReady(t *testing.T, s *syncer.Store, owner string, lease time.Duration, kinds ...string) (*jobs.Job, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	for ctx.Err() == nil {
+		job, err := s.Queue.Claim(ctx, owner, lease, kinds...)
+		if err != nil || job != nil {
+			return job, err
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return nil, ctx.Err()
+}
+
 func queued(t *testing.T, s *syncer.Store) *jobs.Job {
 	t.Helper()
 	if _, err := s.EnqueueDue(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	j, err := s.Queue.Claim(t.Context(), "worker", time.Minute, syncer.JobKind)
+	j, err := claimReady(t, s, "worker", time.Minute, syncer.JobKind)
 	if err != nil || j == nil {
 		t.Fatalf("claim: %+v %v", j, err)
 	}
@@ -228,7 +248,7 @@ func TestStaleAttemptCannotReplaceNewResult(t *testing.T) {
 	if _, err := s.DB.Exec(t.Context(), "UPDATE jobs SET locked_until=now()-interval '1 second' WHERE id=$1", old.ID); err != nil {
 		t.Fatal(err)
 	}
-	current, err := s.Queue.Claim(t.Context(), "new-owner", time.Minute, syncer.JobKind)
+	current, err := claimReady(t, s, "new-owner", time.Minute, syncer.JobKind)
 	if err != nil || current == nil {
 		t.Fatalf("replacement: %+v %v", current, err)
 	}
@@ -252,7 +272,7 @@ func TestRestartKeepsScheduledWork(t *testing.T) {
 	if _, err := s.EnqueueDue(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	old, err := s.Queue.Claim(t.Context(), "dead", 50*time.Millisecond, syncer.JobKind)
+	old, err := claimReady(t, s, "dead", 50*time.Millisecond, syncer.JobKind)
 	if err != nil || old == nil {
 		t.Fatalf("first claim: %+v %v", old, err)
 	}

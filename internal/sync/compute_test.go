@@ -35,7 +35,7 @@ func TestManualJoinsScheduleAndScopesStatus(t *testing.T) {
 	if count != 2 || priority != 100 {
 		t.Fatalf("duplicate or unpromoted schedule: %d %d", count, priority)
 	}
-	j, err := s.Queue.Claim(t.Context(), "manual", time.Minute, syncer.JobKind)
+	j, err := claimReady(t, s, "manual", time.Minute, syncer.JobKind)
 	if err != nil || j == nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestGlobalManualScopeAndRetryPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j, err := s.Queue.Claim(t.Context(), "worker", time.Minute, syncer.JobKind)
+	j, err := claimReady(t, s, "worker", time.Minute, syncer.JobKind)
 	if err != nil || j == nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
 	if _, err := s.DB.Exec(t.Context(), `UPDATE jobs SET locked_until=now()-interval '1 second' WHERE id=$1`, old.ID); err != nil {
 		t.Fatal(err)
 	}
-	current, err := s.Queue.Claim(t.Context(), "replacement", time.Minute, syncer.JobKind)
+	current, err := claimReady(t, s, "replacement", time.Minute, syncer.JobKind)
 	if err != nil || current == nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestComputeFreshnessAndSafeErrors(t *testing.T) {
 		if _, err := s.RefreshCompute(t.Context(), workspace, []int64{account}, region); err != nil {
 			t.Fatal(err)
 		}
-		j, err := s.Queue.Claim(t.Context(), "worker", time.Minute, syncer.JobKind)
+		j, err := claimReady(t, s, "worker", time.Minute, syncer.JobKind)
 		if err != nil || j == nil {
 			t.Fatalf("claim: %v", err)
 		}
@@ -329,7 +329,7 @@ func TestFailedReceiptAndRetention(t *testing.T) {
 	if _, err := s.DB.Exec(t.Context(), `UPDATE jobs SET max_attempts=1`); err != nil {
 		t.Fatal(err)
 	}
-	j, err := s.Queue.Claim(t.Context(), "failure", time.Minute, syncer.JobKind)
+	j, err := claimReady(t, s, "failure", time.Minute, syncer.JobKind)
 	if err != nil || j == nil {
 		t.Fatal(err)
 	}

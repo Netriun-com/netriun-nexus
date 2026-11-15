@@ -40,9 +40,9 @@ type Payload struct {
 
 func (p Payload) Key() string { return fmt.Sprintf("sync:%d:%s:%s", p.AccountID, p.Service, p.Region) }
 
-// ProviderKey adds the provider cap only for compute; other services migrate in T14.
+// ProviderKey shares the provider cap across all collection services.
 func (p Payload) ProviderKey() string {
-	if p.Service == Compute && p.Provider != "" {
+	if p.Provider != "" {
 		return "provider:" + p.Provider
 	}
 	return ""
@@ -54,8 +54,7 @@ type Account struct {
 	Regions         []string
 }
 
-// AccountWide is the existing collectors' whole-account scope. TODO(T14):
-// replace Alibaba OSS/security-group/user '*' rows when collectors are regional.
+// AccountWide is used for global compute APIs and OSS ListBuckets, which has no region filter.
 const AccountWide = "*"
 
 // EnqueueDue locks due rows and inserts deduplicated jobs in one transaction.
@@ -68,7 +67,7 @@ func (s *Store) EnqueueDue(ctx context.Context) (int, error) {
 	defer tx.Rollback(context.Background())
 	rows, err := tx.Query(ctx, `SELECT s.id,a.workspace_id,s.account_id,s.service,s.region,a.provider
         FROM sync_state s JOIN cloud_accounts a ON a.id=s.account_id
-        WHERE s.enabled AND s.next_due_at<=clock_timestamp()
+        WHERE s.enabled AND NOT(s.region='*' AND s.service IN ('eds.users','ecs.security_groups')) AND s.next_due_at<=clock_timestamp()
         AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.status IN ('queued','running')
             AND j.dedupe_key='sync:'||s.account_id||':'||s.service||':'||s.region)
         ORDER BY s.next_due_at,s.id LIMIT 100 FOR UPDATE OF s SKIP LOCKED`)
@@ -110,7 +109,7 @@ func (s *Store) Handler(collect Collector) worker.Handler {
 		}
 		ac := Account{ID: p.AccountID, WorkspaceID: p.WorkspaceID}
 		err := s.DB.QueryRow(ctx, `UPDATE sync_state s SET last_started_at=clock_timestamp(),last_job_id=$1,last_attempt=$2
-            FROM cloud_accounts a,jobs j WHERE s.id=$3 AND s.account_id=$4 AND s.service=$5 AND s.region=$6 AND s.enabled
+            FROM cloud_accounts a,jobs j WHERE s.id=$3 AND s.account_id=$4 AND s.service=$5 AND s.region=$6 AND s.enabled AND NOT(s.region='*' AND s.service IN ('eds.users','ecs.security_groups'))
             AND a.id=s.account_id AND a.workspace_id=$7 AND j.id=$1 AND j.attempts=$2 AND j.locked_by=$8
             AND j.status='running' AND j.locked_until>clock_timestamp()
             RETURNING a.provider,a.regions`, j.ID, j.Attempts, p.StateID, p.AccountID, p.Service, p.Region, p.WorkspaceID, j.LockedBy).Scan(&ac.Provider, &ac.Regions)
@@ -128,19 +127,7 @@ func (s *Store) Handler(collect Collector) worker.Handler {
 			if p.Region == AccountWide {
 				empty = false
 			}
-			code, message := "", ""
-			if result != nil {
-				code, message = "NX-SYNC-FAILED", "Collection failed. Check credentials, permissions and selected regions."
-				if errors.Is(result, context.Canceled) {
-					code, message = "NX-SYNC-CANCELLED", "Collection interrupted; retry is scheduled."
-				}
-				if errors.Is(result, context.DeadlineExceeded) {
-					code, message = "NX-SYNC-TIMEOUT", "Collection timed out; retry is scheduled."
-				}
-			}
-			if p.Service == Compute {
-				code, message = ComputeError(result)
-			}
+			code, message := ComputeError(result)
 			// Never reuse a cancelled provider context for recording failure.
 			save, stop := context.WithTimeout(context.Background(), 3*time.Second)
 			defer stop()

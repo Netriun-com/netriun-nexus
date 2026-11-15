@@ -13,27 +13,17 @@ import (
 	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/secure"
 	syncer "github.com/netriun/nexus/internal/sync"
-	"github.com/redis/go-redis/v9"
 )
 
-// NewCollector initializes only the dependencies needed by the old collectors.
-// The caller owns db and must close the returned Redis client. There is no HTTP
+// NewCollector initializes the worker vault and store; it needs no Valkey.
+// The caller owns db. There is no HTTP
 // bootstrap, SMTP initialization, or new collection implementation here.
 func NewCollector(ctx context.Context, db *pgxpool.Pool, config syncer.Config) (*App, error) {
 	vault, err := secure.NewVault(os.Getenv("ENCRYPTION_KEY"))
 	if err != nil {
 		return nil, err
 	}
-	options, err := redis.ParseURL(os.Getenv("REDIS_URL"))
-	if err != nil {
-		return nil, err
-	}
-	rc := redis.NewClient(options)
-	if err := rc.Ping(ctx).Err(); err != nil {
-		rc.Close()
-		return nil, err
-	}
-	return &App{DB: db, Redis: rc, Vault: vault, Sync: syncer.New(db, config), regionSlots: make(chan struct{}, 6)}, nil
+	return &App{DB: db, Vault: vault, Sync: syncer.New(db, config)}, nil
 }
 
 // DiscoverSyncRegions uses existing region APIs only for an all-regions account.
@@ -61,6 +51,7 @@ func (a *App) DiscoverSyncRegions(ctx context.Context, account syncer.Account) m
 		}
 		if err == nil && len(regions) > 0 {
 			found[syncer.Compute] = regions
+			found[syncer.SecurityGroups] = regions
 		} else {
 			slog.Warn("compute region discovery failed", "account_id", account.ID)
 		}
@@ -91,9 +82,7 @@ func (a *App) DiscoverSyncRegions(ctx context.Context, account syncer.Account) m
 	}
 }
 
-// CollectScheduled delegates to today's collectors. Compute uses durable lease
-// fencing; the other services keep their existing Valkey locks. TODO(T14): replace the '*' service jobs with regional collectors;
-// do not filter or rewrite whole-account snapshots in this bridge.
+// CollectScheduled runs existing provider APIs with durable snapshot fencing.
 func (a *App) CollectScheduled(ctx context.Context, p syncer.Payload, account syncer.Account) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
@@ -107,22 +96,13 @@ func (a *App) CollectScheduled(ctx context.Context, p syncer.Payload, account sy
 			err = a.collectRegion(ctx, p.WorkspaceID, p.AccountID, account.Provider, p.Region)
 		}
 	case syncer.Desktops:
-		err = a.withServiceCollectorLock(ctx, p.WorkspaceID, p.AccountID, "eds", func(locked context.Context) error {
-			return a.collectEDSDesktops(locked, p.WorkspaceID, p.AccountID, p.Region, nil)
-		})
+		err = a.collectEDSDesktops(ctx, p.WorkspaceID, p.AccountID, p.Region)
 	case syncer.Users:
-		_, snapshotRegion, err = a.edsCredentials(ctx, p.WorkspaceID, p.AccountID)
-		if err == nil {
-			err = a.refreshEDSService(ctx, p.WorkspaceID, p.AccountID, "users", snapshotRegion)
-		}
-		// refreshEDSService may also update desktop snapshots. Only the users
-		// sync_state row is completed by this job; desktops have their own jobs.
+		err = a.collectEDSUsers(ctx, p.WorkspaceID, p.AccountID, p.Region)
 	case syncer.Buckets:
-		snapshotRegion = ""
-		err = a.withServiceCollectorLock(ctx, p.WorkspaceID, p.AccountID, "oss", func(locked context.Context) error { return a.collectOSSBuckets(locked, p.WorkspaceID, p.AccountID) })
+		err = a.collectOSSBuckets(ctx, p.WorkspaceID, p.AccountID)
 	case syncer.SecurityGroups:
-		snapshotRegion = ""
-		err = a.withServiceCollectorLock(ctx, p.WorkspaceID, p.AccountID, "ecs-security-groups", func(locked context.Context) error { return a.collectSecurityGroups(locked, p.WorkspaceID, p.AccountID) })
+		err = a.collectSecurityGroups(ctx, p.WorkspaceID, p.AccountID, p.Region)
 	default:
 		return false, errors.New("Unsupported scheduled service")
 	}
