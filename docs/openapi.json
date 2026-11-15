@@ -1482,7 +1482,7 @@
     "/accounts/{id}/ecs/security-groups/refresh": {
       "post": {
         "summary": "Queue a durable ECS security-group refresh while the current snapshot remains readable",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }, { "name": "region", "in": "query", "description": "Optional target region; omitted or all refreshes every enabled regional scope.", "schema": { "type": "string" } }],
         "responses": {
           "202": { "description": "Durable scheduled sync jobs queued at high priority, or matching queued/running jobs joined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
           "400": { "description": "The account is not an Alibaba connection" },
@@ -1875,6 +1875,80 @@
         }
       }
     },
+    "/sync-state": {
+      "get": {
+        "summary": "Read background sync status for accessible account scopes",
+        "description": "Reads only Nexus PostgreSQL data; never queues sync or contacts a provider. Returns enabled account/service/region scopes in the caller workspace with account view access. Without an account filter, includes all view-accessible accounts. Explicit selections must be view-accessible and belong to one provider; inaccessible or foreign-workspace selections return 403. Disabled and obsolete EDS users/security-group * scopes are omitted. Poll about every 30 seconds only while the page is visible. Empty data means no enabled scopes, for example while discovery is pending.",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "description": "Comma-separated account IDs, at most 100, from one provider. Takes precedence over account_id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(,[1-9][0-9]*)*$"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "compute",
+                "eds.desktops",
+                "eds.users",
+                "oss.buckets",
+                "ecs.security_groups"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accessible sync scopes, ordered by account, service, region",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SyncState"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid account selection, mixed providers, or unsupported service"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Cloud account view access required"
+          },
+          "503": {
+            "description": "Database unavailable"
+          }
+        }
+      }
+    },
     "/inventory/refresh": {
       "post": {
         "summary": "Queue durable compute sync jobs while the current snapshot remains readable",
@@ -1965,6 +2039,72 @@
       }
     },
     "schemas": {
+      "SyncState": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "service",
+          "region",
+          "last_success_at",
+          "last_started_at",
+          "next_due_at",
+          "last_error",
+          "last_error_code",
+          "job_status"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "compute",
+              "eds.desktops",
+              "eds.users",
+              "oss.buckets",
+              "ecs.security_groups"
+            ]
+          },
+          "region": {
+            "type": "string",
+            "description": "Provider/directory region, or * for a global scope."
+          },
+          "last_success_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "next_due_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "job_status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running"
+            ],
+            "description": "Active job for this scope generation, including scheduled and manual sync. idle means no queued/running job."
+          }
+        }
+      },
       "InventoryRefreshJob": {
         "type": "object",
         "properties": {

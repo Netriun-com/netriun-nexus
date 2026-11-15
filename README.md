@@ -25,7 +25,7 @@ docker compose up --build -d
 
 Open http://localhost:8080. Sign in as `admin` with `ADMIN_PASSWORD` from `.env`, or create an independent Community workspace from the sign-up screen. The setup script generates independent secrets and refuses to overwrite an existing `.env`. Never commit this file. Back up `ENCRYPTION_KEY` alongside PostgreSQL backups: encrypted cloud credentials cannot be recovered without it.
 
-The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a compute service shows its latest database snapshot immediately and queues a live provider refresh only when the snapshot is missing or older than five minutes and no refresh for that scope is active.
+The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a compute service shows its latest database snapshot immediately. Navigation and scope changes never queue a refresh; workers maintain freshness in the background.
 
 `DEPLOYMENT_MODE` is explicit and accepts `self_hosted` or `cloud`; local,
 Compose, and the bundled Helm values default to `self_hosted`. Authenticated
@@ -63,7 +63,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Snapshot-first Alibaba OSS bucket inventory with metadata, usage statistics, search/sort/filter, list/visual modes, and private bucket creation.
 - Snapshot-first Alibaba ECS security groups with attached-instance visibility, list/visual modes, rule inspection, and audited ingress/egress rule creation and deletion.
 - Guided AWS, Alibaba Cloud, Azure and Google Cloud connection setup with a required live credential and compute-access test before saving.
-- Collection across explicitly selected or all enabled regions when a service page opens a missing or older-than-five-minute snapshot, or an explicit refresh or user action requests it. A durable worker scheduler also refreshes scopes without a browser; see [scheduled sync](#scheduled-sync).
+- Background collection across selected or all enabled regions, independently of browser activity. Only Refresh live and post-action follow-ups request additional syncs; see [scheduled sync](#scheduled-sync).
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
@@ -169,8 +169,9 @@ Standalone workers require `DATABASE_URL` and `ENCRYPTION_KEY`; `REDIS_URL` is
 optional and unused by the worker. They apply the same
 transactional migrations without initializing HTTP sessions, SMTP, or the
 bootstrap administrator; `serve`/`all` retain the existing application settings.
-Scheduled collection runs in worker/all roles. Existing page/button refresh
-systems continue to run as before.
+Scheduled collection runs in worker/all roles. Page navigation and scope changes
+only read stored data. Helm defaults to separate serve and worker Deployments
+(`worker.enabled=true`); set it to false for combined mode.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
@@ -221,6 +222,16 @@ use the same values in all processes. Compose passes these settings through.
 | `NEXUS_SYNC_DISCOVERY_INTERVAL` | `1h` | Provider region discovery per all-regions account |
 | `NEXUS_AUDIT_RETENTION_INTERVAL` | `24h` | Per-workspace audit cleanup schedule |
 | `NEXUS_JOB_RETENTION` | `168h` | Terminal job retention (7 days) |
+
+Service lists show **Last synced** per account/region, plain-language errors, and
+**Syncing…** for queued/running jobs. They poll the read-only
+`GET /api/v1/sync-state` endpoint about every 30 seconds only while visible,
+and patch changed rows, counts, and status without replacing filters, dialogs,
+or scroll containers. Hidden tabs pause polling and check on return. EDS Users
+also watches desktop sync completion for assignment counts. Data may appear up
+to one polling interval after a job completes. Navigation, filters, scope changes,
+and snapshot age never enqueue sync. Use Refresh live for an immediate targeted
+request; successful actions keep their existing follow-ups.
 
 AWS/Alibaba compute, EDS desktops, and security groups use per-region rows. Explicit selections
 are reconciled in the account-save transaction; for “all regions,” the worker
@@ -319,7 +330,7 @@ For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to
 
 The application ignores forwarded client-IP headers by default. When running behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to the proxy address or network (comma-separated) so login rate limiting uses the original client IP. Trust only networks controlled by your deployment; for example, a local proxy can use `127.0.0.1/32`.
 
-This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Every compute, Alibaba EDS, and Alibaba OSS listing page reads the latest PostgreSQL snapshot first and queues live collection asynchronously only if that scope is missing or older than five minutes and no refresh for it is queued or running. Refresh buttons bypass the age check. Successful resource mutations request refreshes immediately and again after about 10, 30, and 90 seconds for the same scope; leaving the page or changing scope cancels the remaining requests. Action refreshes that meet an active job coalesce into one pending refresh after it finishes. Completed refreshes update the current table rows and status without replacing page controls, dialogs, or scroll containers; results for other scopes do not alter the screen. EDS Users consumes one all-regions desktop snapshot instead of issuing one browser request per region. OSS metadata and usage reads use bounded per-bucket concurrency; provider-reported usage can lag by more than one hour. Successful results replace the prior snapshot while provider failures retain the last healthy data. Equivalent jobs are coalesced, durable job leases fence snapshot writes, account/provider limits bound collection concurrency, inventory rows are batch-upserted, and Azure VM status reads are parallelized with a fixed limit. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup. SAML supports SP-initiated login, optional IdP-initiated login, and signed Single Logout responses; OIDC uses discovery and RP-initiated logout when the provider publishes an end-session endpoint.
+This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Compute, Alibaba EDS desktops/users, OSS buckets, and security-group lists read PostgreSQL snapshots. Navigation, filters, and snapshot age never queue collection. Refresh buttons explicitly queue targeted syncs. Successful resource mutations request refreshes immediately and again after about 10, 30, and 90 seconds for the same scope; leaving the page or changing scope cancels the remaining requests. Action refreshes that meet an active job coalesce into one pending refresh after it finishes. Completed refreshes update the current table rows and status without replacing page controls, dialogs, or scroll containers; results for other scopes do not alter the screen. EDS Users consumes one all-regions desktop snapshot instead of issuing one browser request per region. OSS metadata and usage reads use bounded per-bucket concurrency; provider-reported usage can lag by more than one hour. Successful results replace the prior snapshot while provider failures retain the last healthy data. Equivalent jobs are coalesced, durable job leases fence snapshot writes, account/provider limits bound collection concurrency, inventory rows are batch-upserted, and Azure VM status reads are parallelized with a fixed limit. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup. SAML supports SP-initiated login, optional IdP-initiated login, and signed Single Logout responses; OIDC uses discovery and RP-initiated logout when the provider publishes an end-session endpoint.
 
 No production cloud action was performed during development. Real account validation requires your AWS/IAM or Alibaba Cloud RAM credentials and permissions.
 

@@ -34,7 +34,7 @@ func (a *App) refreshOSS(w http.ResponseWriter, r *http.Request) {
 }
 func (a *App) refreshSecurityGroups(w http.ResponseWriter, r *http.Request) {
 	if account, ok := a.securityGroupAccount(w, r, "view"); ok {
-		a.queueServiceRefresh(w, r, account, syncer.SecurityGroups, "")
+		a.queueServiceRefresh(w, r, account, syncer.SecurityGroups, strings.TrimSpace(r.URL.Query().Get("region")))
 	}
 }
 func (a *App) queueServiceRefresh(w http.ResponseWriter, r *http.Request, account int64, service, region string) {

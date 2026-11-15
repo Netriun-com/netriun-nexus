@@ -316,6 +316,143 @@ func TestIntegration(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("expected two instances across selected AWS accounts, got %d", len(list.Data))
 	}
+	t.Run("sync state workspace and account isolation", func(t *testing.T) {
+		path := fmt.Sprintf("/api/v1/sync-state?account_id=%d&service=compute", account1)
+		read := func(path, token string) []syncer.State {
+			t.Helper()
+			response := request("GET", path, token, nil, 200)
+			if response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("sync state must not be cached")
+			}
+			var result struct {
+				Data []syncer.State `json:"data"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Data == nil {
+				t.Fatal("sync data must be an array")
+			}
+			return result.Data
+		}
+		request("GET", path, "", nil, 401)
+		request("GET", "/api/v1/sync-state?service=unsupported", viewer, nil, 400)
+		request("GET", "/api/v1/sync-state?account_id=invalid", viewer, nil, 400)
+		for _, id := range []int64{account2, secondAccount} {
+			request("GET", fmt.Sprintf("/api/v1/sync-state?account_id=%d", id), viewer, nil, 403)
+		}
+		request("GET", fmt.Sprintf("/api/v1/sync-state?account_ids=%d,%d", account1, account2), viewer, nil, 403)
+		request("GET", path, secondOwner, nil, 403)
+		for _, row := range read("/api/v1/sync-state", viewer) {
+			if row.AccountID != account1 {
+				t.Fatalf("viewer saw inaccessible scope: %+v", row)
+			}
+		}
+		other := read("/api/v1/sync-state", secondOwner)
+		if len(other) != 1 || other[0].AccountID != secondAccount {
+			t.Fatalf("workspace isolation: %+v", other)
+		}
+		for _, service := range []string{syncer.Desktops, syncer.Users, syncer.Buckets, syncer.SecurityGroups} {
+			rows := read(fmt.Sprintf("/api/v1/sync-state?account_id=%d&service=%s", alibabaAccount, service), adminToken)
+			if len(rows) == 0 {
+				t.Fatalf("missing service %s", service)
+			}
+			for _, row := range rows {
+				if row.Service != service || row.AccountID != alibabaAccount {
+					t.Fatalf("service filter: %+v", row)
+				}
+			}
+		}
+		before := read(path, viewer)
+		if len(before) != 1 {
+			t.Fatalf("compute scopes: %+v", before)
+		}
+		original := before[0]
+		t.Cleanup(func() {
+			_, err := a.DB.Exec(ctx, `UPDATE sync_state SET last_success_at=$2,last_started_at=$3,last_error=$4,last_error_code=$5 WHERE account_id=$1 AND service='compute'`, account1, original.LastSuccessAt, original.LastStartedAt, original.LastError, original.LastErrorCode)
+			if err != nil {
+				t.Error(err)
+			}
+		})
+		if _, err := a.DB.Exec(ctx, `UPDATE sync_state SET last_success_at=now()-interval '5 minutes',last_started_at=now()-interval '1 minute',last_error='Check account permissions.',last_error_code='NX-SYNC-AUTH' WHERE account_id=$1`, account1); err != nil {
+			t.Fatal(err)
+		}
+		idle := read(path, viewer)[0]
+		if idle.JobStatus != "idle" || idle.LastSuccessAt == nil || idle.LastStartedAt == nil || idle.NextDueAt.IsZero() || idle.LastError != "Check account permissions." || idle.LastErrorCode != "NX-SYNC-AUTH" {
+			t.Fatalf("missing metadata: %+v", idle)
+		}
+		receipt, err := a.Sync.RefreshCompute(ctx, workspaceID, []int64{account1}, "us-east-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var jobIDs []int64
+		if err := a.DB.QueryRow(ctx, `SELECT job_ids FROM inventory_refreshes WHERE id=$1`, receipt.ID).Scan(&jobIDs); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := a.DB.Exec(ctx, `DELETE FROM inventory_refreshes WHERE id=$1`, receipt.ID); err != nil {
+				t.Error(err)
+			}
+			if _, err := a.DB.Exec(ctx, `DELETE FROM jobs WHERE id=ANY($1)`, jobIDs); err != nil {
+				t.Error(err)
+			}
+		})
+		if got := read(path, viewer)[0].JobStatus; got != "queued" {
+			t.Fatalf("queued status: %s", got)
+		}
+		if _, err := a.DB.Exec(ctx, `UPDATE jobs SET status='running',attempts=1,locked_by='sync-state-test',locked_until=now()+interval '1 minute' WHERE id=ANY($1)`, jobIDs); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(path, viewer)[0].JobStatus; got != "running" {
+			t.Fatalf("running status: %s", got)
+		}
+		if _, err := a.DB.Exec(ctx, `UPDATE jobs SET status='succeeded',locked_by=NULL,locked_until=NULL WHERE id=ANY($1)`, jobIDs); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(path, viewer)[0].JobStatus; got != "idle" {
+			t.Fatalf("finished status: %s", got)
+		}
+		var countBefore, countAfter int
+		if err := a.DB.QueryRow(ctx, `SELECT count(*) FROM jobs`).Scan(&countBefore); err != nil {
+			t.Fatal(err)
+		}
+		read(path, viewer)
+		if err := a.DB.QueryRow(ctx, `SELECT count(*) FROM jobs`).Scan(&countAfter); err != nil {
+			t.Fatal(err)
+		}
+		if countBefore != countAfter {
+			t.Fatal("reading sync state enqueued work")
+		}
+	})
+	t.Run("targeted security group refresh", func(t *testing.T) {
+		response := request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{}, 202)
+		var receipt struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		var jobIDs []int64
+		if err := a.DB.QueryRow(ctx, `SELECT job_ids FROM inventory_refreshes WHERE id=$1`, receipt.ID).Scan(&jobIDs); err != nil {
+			t.Fatal(err)
+		}
+		if len(jobIDs) != 1 {
+			t.Fatalf("refresh targeted %d scopes, want one", len(jobIDs))
+		}
+		var service, region string
+		if err := a.DB.QueryRow(ctx, `SELECT payload->>'service',payload->>'region' FROM jobs WHERE id=$1`, jobIDs[0]).Scan(&service, &region); err != nil {
+			t.Fatal(err)
+		}
+		if service != syncer.SecurityGroups || region != "cn-hangzhou" {
+			t.Fatalf("wrong target %s/%s", service, region)
+		}
+		if _, err := a.DB.Exec(ctx, `DELETE FROM inventory_refreshes WHERE id=$1`, receipt.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.DB.Exec(ctx, `DELETE FROM jobs WHERE id=ANY($1)`, jobIDs); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("instance snapshot freshness", func(t *testing.T) {
 		oldest := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Second)
 		newest := oldest.Add(8 * time.Minute)
@@ -823,7 +960,7 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "data-tree-toggle") || !strings.Contains(webAsset.Body.String(), "aria-expanded") || !strings.Contains(webAsset.Body.String(), "Interactive wizard") || !strings.Contains(webAsset.Body.String(), "eds-wizard-review") || !strings.Contains(webAsset.Body.String(), "/reports/overview") || !strings.Contains(webAsset.Body.String(), "Custom billing report") || !strings.Contains(webAsset.Body.String(), "/reports/alibaba/billing/export") || !strings.Contains(webAsset.Body.String(), "copy-cloud-policy") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "data-tree-toggle") || !strings.Contains(webAsset.Body.String(), "aria-expanded") || !strings.Contains(webAsset.Body.String(), "Interactive wizard") || !strings.Contains(webAsset.Body.String(), "eds-wizard-review") || !strings.Contains(webAsset.Body.String(), "/reports/overview") || !strings.Contains(webAsset.Body.String(), "Custom billing report") || !strings.Contains(webAsset.Body.String(), "/reports/alibaba/billing/export") || !strings.Contains(webAsset.Body.String(), "copy-cloud-policy") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Last synced") || !strings.Contains(webAsset.Body.String(), "/sync-state?") || !strings.Contains(webAsset.Body.String(), "Syncing…") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	docsAsset := request("GET", "/docs.js", "", nil, 200)

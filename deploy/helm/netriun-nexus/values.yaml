@@ -19,7 +19,7 @@ sync:
 
 # These limits also configure the combined Deployment when enabled is false.
 worker:
-  enabled: false
+  enabled: true
   replicaCount: 1
   concurrency: 8
   accountConcurrency: 2
