@@ -60,7 +60,7 @@ func TestServiceManualDurabilityDedupeAndOwnership(t *testing.T) {
 			if _, err := s.ServiceRefreshStatus(t.Context(), workspace, receipt.ID, nil, scope.service); !errors.Is(err, syncer.ErrAccountAccess) {
 				t.Fatalf("account access: %v", err)
 			}
-			j, err := s.Queue.Claim(t.Context(), "replacement", time.Minute, syncer.JobKind)
+			j, err := claimReady(t, s, "replacement", time.Minute, syncer.JobKind)
 			if err != nil || j == nil {
 				t.Fatalf("claim: %v", err)
 			}
@@ -116,7 +116,7 @@ func TestServiceLeaseFencingAndFailurePreservesSnapshot(t *testing.T) {
 			if _, err := s.DB.Exec(t.Context(), `UPDATE jobs SET locked_until=now()-interval '1 second' WHERE id=$1`, old.ID); err != nil {
 				t.Fatal(err)
 			}
-			current, err := s.Queue.Claim(t.Context(), "new", time.Minute, syncer.JobKind)
+			current, err := claimReady(t, s, "new", time.Minute, syncer.JobKind)
 			if err != nil || current == nil {
 				t.Fatalf("reclaim: %v", err)
 			}
@@ -133,7 +133,7 @@ func TestServiceLeaseFencingAndFailurePreservesSnapshot(t *testing.T) {
 			if _, err := s.RefreshService(t.Context(), workspace, []int64{account}, scope.service, scope.region); err != nil {
 				t.Fatal(err)
 			}
-			failed, err := s.Queue.Claim(t.Context(), "failed", time.Minute, syncer.JobKind)
+			failed, err := claimReady(t, s, "failed", time.Minute, syncer.JobKind)
 			if err != nil || failed == nil {
 				t.Fatal(err)
 			}
