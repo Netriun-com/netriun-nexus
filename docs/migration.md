@@ -37,3 +37,11 @@ tables and creates a bootstrap workspace fixture.
 Never point it at an application database or run it concurrently with other
 database tests. CI runs the frontend regression suite with
 `node --test scripts/test-navigation.cjs`; the importer test remains opt-in.
+
+Numbered SQL migrations in `internal/app/migrations` must have unique integer
+versions. Application and worker startup validate the full embedded file set
+before opening the migration transaction. A duplicate version fails startup
+with an error naming the version and both files, even if that version was
+already applied to the database. New migrations must use the next free version;
+T14 service queues use `014_service_queue.sql` and audit retention uses
+`015_audit_retention.sql`.
