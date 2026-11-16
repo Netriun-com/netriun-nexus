@@ -11,7 +11,8 @@
 // leases retry immediately, or become failed if their attempts are exhausted.
 //
 // Nonempty concurrency keys default to one running job across all workers;
-// New accepts per-key overrides. Every worker must use the same limits.
+// New accepts per-key overrides. Every worker in a schema must use the same limits.
+// Advisory claim locks are scoped to current_schema(), like the queue tables.
 // Keys of the form "account:123" can also match an "account:*" limit; exact
 // overrides take precedence over these namespace limits. Empty
 // keys are unconstrained. Optional ProviderKey consumes a second limit using the
@@ -201,8 +202,9 @@ func (q *Queue) Claim(ctx context.Context, worker string, lease time.Duration, k
 			}
 			var locked bool
 			// A row lock alone cannot serialize two claims of different jobs
-			// with the same key. Hash collisions only reduce parallelism.
-			err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('nexus.jobs:' || $1, 0))`, key).Scan(&locked)
+			// with the same key. Isolate schemas sharing one database, just as
+			// the running-job counts below do. Hash collisions reduce parallelism.
+			err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('nexus.jobs:' || current_schema() || ':' || $1, 0))`, key).Scan(&locked)
 			if err != nil {
 				return nil, err
 			}

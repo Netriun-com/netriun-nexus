@@ -75,6 +75,12 @@ func TestNexusProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.worker.Lease = 900 * time.Millisecond
+	if value := os.Getenv("NEXUS_TEST_LEASE"); value != "" {
+		cfg.worker.Lease, err = time.ParseDuration(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	cfg.worker.PollInterval = 20 * time.Millisecond
 	handlers := worker.Registry{"test": func(ctx context.Context, j jobs.Job) error {
 		var p testPayload
@@ -140,6 +146,24 @@ func TestNexusProcess(t *testing.T) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
+	if marker := os.Getenv("NEXUS_TEST_STOPPING_FILE"); marker != "" {
+		// Acknowledge only after cancellation has propagated to runService and
+		// its claim context. The drain test can then release its held handler.
+		signalCtx := ctx
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
+		forwarded := make(chan struct{})
+		defer func() { stop(); <-forwarded }()
+		go func() {
+			defer close(forwarded)
+			<-signalCtx.Done()
+			cancel()
+			if err := os.WriteFile(marker, []byte("stopping"), 0600); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 	if err := runService(ctx, cfg, handlers); err != nil {
 		t.Fatal(err)
 	}
@@ -209,10 +233,13 @@ func status(address, path string) int {
 	return r.StatusCode
 }
 
-func (p *process) stop(t *testing.T, sig os.Signal) {
+func (p *process) stop(t *testing.T, sig os.Signal, afterSignal ...func()) {
 	t.Helper()
 	if err := p.cmd.Process.Signal(sig); err != nil {
 		t.Fatal(err)
+	}
+	for _, release := range afterSignal {
+		release()
 	}
 	select {
 	case err := <-p.done:
@@ -356,15 +383,24 @@ func TestWorkerRecoveryAndShutdown(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			db, q, dsn := database(t)
 			shutdown, delay := "1s", 5000
+			var release, stopping string
+			extra := []string{"NEXUS_WORKERS=1", "NEXUS_ACCOUNT_CONCURRENCY=1"}
 			if scenario == "drained" {
-				delay = 400
+				// Test graceful drain independently of subsecond lease-expiry
+				// races. Hold the handler until claims have actually stopped,
+				// and use the real runtime's lease and shutdown budgets.
+				delay = 0
+				shutdown = worker.DefaultConfig().ShutdownTimeout.String()
+				release = filepath.Join(t.TempDir(), "release")
+				stopping = filepath.Join(t.TempDir(), "stopping")
+				extra = append(extra, "NEXUS_TEST_LEASE="+worker.DefaultConfig().Lease.String(), "NEXUS_TEST_STOPPING_FILE="+stopping)
 			}
 			if scenario == "deadline" {
 				shutdown = "150ms"
 			}
-			w := startProcess(t, dsn, "worker", shutdown, "NEXUS_WORKERS=1", "NEXUS_ACCOUNT_CONCURRENCY=1")
+			w := startProcess(t, dsn, "worker", shutdown, extra...)
 			marker := filepath.Join(t.TempDir(), "runs")
-			j := addJob(t, q, testPayload{Marker: marker, FirstDelayMS: delay}, "account:1")
+			j := addJob(t, q, testPayload{Marker: marker, FirstDelayMS: delay, WaitFile: release}, "account:1")
 			waitMarker(t, marker)
 			next := addJob(t, q, testPayload{Marker: filepath.Join(t.TempDir(), "next")}, "account:1")
 			sig := os.Signal(syscall.SIGTERM)
@@ -377,13 +413,29 @@ func TestWorkerRecoveryAndShutdown(t *testing.T) {
 				}
 				eventually(t, func() bool { _, err := os.Stat(marker + ".cancelled"); return err == nil })
 			}
-			w.stop(t, sig)
+			w.stop(t, sig, func() {
+				if scenario != "drained" {
+					return
+				}
+				waitMarker(t, stopping)
+				data, err := os.ReadFile(marker)
+				if err != nil || string(data) != "1\n" {
+					t.Fatalf("drain must start on its first attempt: %q %v", data, err)
+				}
+				if state, n, _ := jobState(t, db, j.ID); state != "running" || n != 1 {
+					t.Fatalf("handler was not held during drain: %s %d", state, n)
+				}
+				if err := os.WriteFile(release, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			})
 			if state, n, _ := jobState(t, db, next.ID); state != "queued" || n != 0 {
 				t.Fatal("claimed after shutdown signal")
 			}
 			if scenario == "drained" {
-				if state, n, _ := jobState(t, db, j.ID); state != "succeeded" || n != 1 {
-					t.Fatalf("not drained: %s %d", state, n)
+				if state, n, message := jobState(t, db, j.ID); state != "succeeded" || n != 1 {
+					data, _ := os.ReadFile(marker)
+					t.Fatalf("not drained: %s %d; last_error=%q marker=%q", state, n, message, data)
 				}
 			} else {
 				if state, n, _ := jobState(t, db, j.ID); state != "running" || n != 1 {
