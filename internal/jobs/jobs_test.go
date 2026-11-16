@@ -493,3 +493,43 @@ func TestDuePriorityAndSkipLocked(t *testing.T) {
 	}
 	noClaim(t, q)
 }
+
+func TestClaimLocksAreSchemaScoped(t *testing.T) {
+	for _, kind := range []string{"account", "provider"} {
+		t.Run(kind, func(t *testing.T) {
+			first := testQueue(t, nil)
+			second := testQueue(t, nil)
+			key := kind + ":" + t.Name()
+			p := Params{Kind: "scope-test"}
+			if kind == "account" {
+				p.ConcurrencyKey = key
+			} else {
+				p.ProviderKey = key
+			}
+			enqueue(t, first, p)
+			enqueue(t, second, p)
+			tx, err := first.db.Begin(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			if _, err := tx.Exec(t.Context(), `SELECT pg_advisory_xact_lock(hashtextextended('nexus.jobs:' || current_schema() || ':' || $1, 0))`, key); err != nil {
+				t.Fatal(err)
+			}
+			// The identical logical key in a different schema remains claimable.
+			if j, err := second.Claim(t.Context(), "other-schema", time.Minute); err != nil || j == nil {
+				t.Fatalf("cross-schema claim: %+v %v", j, err)
+			}
+			// The queue in this schema must still respect its own mutex.
+			if j, err := first.Claim(t.Context(), "same-schema", time.Minute); err != nil || j != nil {
+				t.Fatalf("same-schema claim ignored %s lock: %+v %v", kind, j, err)
+			}
+			if err := tx.Rollback(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if j, err := first.Claim(t.Context(), "released", time.Minute); err != nil || j == nil || j.Attempts != 1 {
+				t.Fatalf("schema-local key stayed blocked after release: %+v %v", j, err)
+			}
+		})
+	}
+}
