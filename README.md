@@ -194,6 +194,8 @@ claims stop immediately and lease renewal continues during the drain interval.
 At its deadline, handlers are cancelled and renewal stops; unfinished jobs stay
 durable and become claimable after lease expiry. A lost or uncertain lease also
 cancels the handler. A crash may repeat work, so delivery is at least once.
+Queue concurrency is shared by workers using the same PostgreSQL schema.
+Independent schemas do not block each other’s claim keys.
 
 Worker `/healthz` reports runtime liveness (200 while active, 503 while stopping),
 not database/provider readiness. Kubernetes should probe it on the worker pod's
