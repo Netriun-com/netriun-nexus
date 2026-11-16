@@ -397,6 +397,8 @@ Acceptance: as in T13, for each of the three services.
 
 ### T15. Pages stop triggering sync
 
+- [x] Implemented in this PR: read-only sync status, visible-page polling, no navigation refreshes, and separate Helm workers by default.
+
 Work:
 
 1. In `internal/app/web/app.js`, page navigation and scope changes never start

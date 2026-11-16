@@ -285,6 +285,7 @@ func (a *App) Handler() http.Handler {
 		"GET /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings, "PUT /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings,
 		"DELETE /api/v1/identity-providers/{id}/group-mappings/{mappingID}": a.deleteIdentityGroupMapping, "PUT /api/v1/sso-settings": a.saveSSOSettings,
 		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings,
+		"GET /api/v1/sync-state": a.syncState,
 		"POST /api/v1/inventory/refresh": a.refreshInventory, "GET /api/v1/inventory/refresh/{jobID}": a.inventoryRefreshStatus,
 	}
 	for pattern, h := range routes {

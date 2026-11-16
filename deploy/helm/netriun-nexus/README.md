@@ -45,13 +45,14 @@ T8 moves that legacy deployment artifact to the shared licensing project. They
 do not configure a Nexus runtime client. The legacy mTLS Compose example is
 also retained for that extraction and is no longer a supported Nexus override.
 
-## Process roles and optional worker Deployment
+## Process roles and separate worker Deployment
 
-`worker.enabled` defaults to `false`: the existing Deployment uses
-`NEXUS_ROLE=all` and runs HTTP plus the durable worker pool. With
-`worker.enabled=true`, that Deployment uses `NEXUS_ROLE=serve` and a separate
-`-worker` Deployment uses `NEXUS_ROLE=worker`. The runtime rejects any other
-role; outside Helm, an unset role defaults to `all`. Compose remains combined.
+`worker.enabled` defaults to `true`: the web Deployment uses `NEXUS_ROLE=serve`
+and a separate `-worker` Deployment uses `NEXUS_ROLE=worker`. Set
+`worker.enabled=false` to run HTTP plus the worker pool in one `NEXUS_ROLE=all`
+Deployment. The runtime rejects any other role; outside Helm, an unset role
+defaults to `all`. Compose remains combined. Upgrading with chart defaults now
+creates a worker Deployment; budget for its resource requests and limits.
 
 ```sh
 helm lint deploy/helm/netriun-nexus --set worker.enabled=true
@@ -134,8 +135,10 @@ audit rows in batches of at most 500. No cloud accounts or refreshes are needed.
 
 Reconciliation migrates legacy users/security-group `*` scopes and preserves
 stored snapshot history. Users jobs no longer refresh desktops. All manual
-refreshes use durable jobs and retain their polling contracts; page sync triggers
-remain unchanged. Stop pre-T14 processes before rolling out this version because
+refreshes use durable jobs and retain their polling contracts; page navigation
+never queues sync. Visible service pages poll read-only sync metadata every
+30 seconds and patch completed sync results without a page reload. Stop pre-T14
+processes before rolling out this version because
 they still contain unfenced Valkey runners. Old Valkey refresh IDs are not migrated.
 See [scheduled sync](../../../README.md#scheduled-sync) for ownership, errors,
 regional migration, and OSS complete-snapshot behavior.
