@@ -23,7 +23,7 @@ The previous milestone plan (M0 to M10) is archived in
 
 | Phase | Goal | Fixes | Status |
 | --- | --- | --- | --- |
-| 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | Done (T5 branch protection pending) |
+| 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | Done |
 | 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | In progress (T8 left) |
 | 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | Done |
 | 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | **Current** (tasks written) |
@@ -41,7 +41,7 @@ v2 product. The first release (MVP) is the end of phase 8.
   built image.
 - [ ] `AGENTS.md` exists and states the architecture rules, PR size, test
   requirements, and the "code and docs change together" rule.
-- [ ] `main` accepts changes only through reviewed pull requests.
+- [x] `main` accepts changes only through reviewed pull requests.
 - [ ] The README and docs no longer claim features that do not exist
   (scheduled collection, approvals) and point to spec v2.
 - [ ] Hotfix: navigating between pages no longer starts a live refresh for a
