@@ -25,8 +25,8 @@ The previous milestone plan (M0 to M10) is archived in
 | --- | --- | --- | --- |
 | 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | Done (T5 branch protection pending) |
 | 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | In progress (T8 left) |
-| 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | **Current** (tasks written) |
-| 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | Planned |
+| 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | Done |
+| 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | **Current** (tasks written) |
 | 5. Live updates | SSE stream, row patches | Full page re-render | Planned |
 | 6. Frontend rebuild | React + TypeScript + Vite UI on a typed client | 167KB single-file UI | Planned |
 | 7. Orchestration and approvals | Engine, approvals, the five workflows, topology | Product vision | Planned |
@@ -67,17 +67,17 @@ existing installations upgrade without data loss.
 
 ## Phase 3 — Durable jobs and sync
 
-- [ ] `jobs` table with leases, retries, backoff, and per-account and
+- [x] `jobs` table with leases, retries, backoff, and per-account and
   per-provider concurrency keys.
-- [ ] `sync_state` table and a scheduler with the approved default intervals.
-- [ ] `nexus serve`, `nexus worker`, and combined mode in one binary; Helm runs
+- [x] `sync_state` table and a scheduler with the approved default intervals.
+- [x] `nexus serve`, `nexus worker`, and combined mode in one binary; Helm runs
   two Deployments.
-- [ ] Today's four refresh systems (inventory, EDS, OSS, security groups) run
+- [x] Today's four refresh systems (inventory, EDS, OSS, security groups) run
   on the queue. Pages never trigger sync; the refresh button enqueues one
   targeted job.
-- [ ] Sync errors are written with a fresh context and shown per account and
+- [x] Sync errors are written with a fresh context and shown per account and
   region.
-- [ ] Audit retention runs as a scheduled job.
+- [x] Audit retention runs as a scheduled job.
 
 Exit: killing a worker mid-sync loses no work, and a large Alibaba account does
 not delay other accounts.

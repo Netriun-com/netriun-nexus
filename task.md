@@ -1,7 +1,7 @@
 # Current tasks
 
-Phase: **2 — Extract licensing** (T8 left) and **3 — Durable jobs and sync** (see [docs/roadmap.md](docs/roadmap.md)).
-Written: 2026-10-30 (phases 1–2), 2026-11-09 (phase 3).
+Phase: **4 — One resource model** (see [docs/roadmap.md](docs/roadmap.md)). Phase 2 still has T8 open.
+Written: 2026-10-30 (phases 1–2), 2026-11-09 (phase 3), 2026-11-16 (phase 4).
 
 Read first: [docs/spec-v2.md](docs/spec-v2.md) and
 [docs/architecture-v2.md](docs/architecture-v2.md).
@@ -25,8 +25,8 @@ Read first: [docs/spec-v2.md](docs/spec-v2.md) and
 
 ## Starting point
 
-Start with **T1**, then **T2**. T3 to T5 can follow in any order. Phase 2
-(T6 to T8) can start after T2 is merged.
+Phases 1 and 3 are done. Phase 4 starts with **T17** and **T18** in parallel
+(see the order table in phase 4). T8 waits for Saheb's confirmation.
 
 ---
 
@@ -254,181 +254,219 @@ files; `LICENSE.md` and `NOTICE` still describe the AGPL boundary correctly.
 
 ---
 
-## Phase 3 — Durable jobs and sync
+## Phase 3 — Durable jobs and sync (done)
 
-Goal (from [docs/roadmap.md](docs/roadmap.md)): pages never trigger sync, a
-background scheduler keeps data fresh, jobs survive restarts, and one large
-account cannot delay others. Design: [docs/architecture-v2.md](docs/architecture-v2.md)
-("Data model", "Sync engine", "Code layout").
+All phase 3 tasks are merged: T9 (PR #19), T10 (PR #13), T11 (PR #14),
+T12 (PR #15), T13 (PR #16), T14 (PR #18), T15 (PR #21), T16 (PR #20), plus the
+queue test-isolation fix (PR #22). The full task text is in the git history of
+this file. Phase 3 left these facts that phase 4 builds on:
 
-Order: T9 can run any time. T10 → T11 → T12 → T13 → T14 → T15 in order; each
-builds on the previous one. T16 can run after T12.
+- All collection runs as `scheduled.sync` jobs from `sync_state` rows, with
+  lease-fenced writes, `account:*` and `provider:*` limits, and durable refresh
+  receipts (`inventory_refreshes`).
+- Pages never start a sync; the UI reads `GET /api/v1/sync-state`.
+- OSS stays account-wide (`region = '*'`) because `ListBuckets` has no region
+  filter; EDS users are scoped to directory endpoints.
+- `Migrate()` rejects duplicate migration numbers. The next free number is
+  `016`; check the latest `main` before choosing one.
+
+---
+
+## Phase 4 — One resource model
+
+Goal (from [docs/roadmap.md](docs/roadmap.md)): one `resources` catalog and one
+`resource_relations` table replace the split between the `instances` table and
+the `service_snapshots` JSON blobs; every list reads from `resources` in under
+one second; Alibaba and AWS also sync networks, subnets, and load balancers with
+their relations. Design: [docs/architecture-v2.md](docs/architecture-v2.md)
+("Data model", "Provider adapters", "API, CLI, and authentication").
+
+Order and owners (Saheb may reassign; one task has one owner):
+
+| Task | Depends on | Suggested owner |
+| --- | --- | --- |
+| T17 `resources` tables and store | — | Codex |
+| T18 Provider interface and compute adapters | — | Collaborator |
+| T21 `GET /api/v1/resources` | T17 | Codex |
+| T19 Compute sync writes `resources` | T17, T18 | Codex |
+| T20 EDS, OSS, and security groups write `resources` | T19 | Codex |
+| T22 Networks, subnets, and load balancers for Alibaba and AWS | T18, T19 | Collaborator |
+| T23 Every list reads `resources`; old writes stop | T20, T21, T22 | Codex |
+
+T17 and T18 can run in parallel. T21 can run in parallel with T19.
 
 Rules for this phase, in addition to "Rules for every task":
 
-- Every new table is added by a new numbered migration in
-  `internal/app/migrations/`. Never edit an existing migration.
-- New SQL goes into a store layer (`internal/jobs`, `internal/sync`), not into
-  HTTP handlers.
-- Keep existing HTTP routes and response shapes working until the UI no
-  longer uses them. If a response changes, update `docs/openapi.json`.
-- Every behavior change has a test against PostgreSQL (the CI integration
-  setup), not only unit tests with fakes.
+- All phase 3 rules still apply (new numbered migrations only, SQL in store
+  packages, compatible response shapes, PostgreSQL tests for every behavior
+  change).
+- Two tasks may be open at once. Before adding a migration, merge the latest
+  `main` and take the next free number.
+- During T19 to T22 the old tables keep being written (dual write) so the
+  current UI keeps working. Only T23 stops the old writes. Old tables are not
+  dropped in this phase.
+- Every `resources` query filters by `workspace_id` and by the caller's
+  accessible accounts (`Policy.AccessibleAccountIDs`). Never look up a
+  resource by id alone.
+- Every write to `resources` is fenced by the job lease, like
+  `ReconcileInventory` and `SaveServiceSnapshot` today.
+- Do not guess provider APIs: link the official documentation for every new
+  provider call in the PR description, and cover it with recorded-response
+  tests (no real cloud credentials in CI).
 
-### T9. CI hygiene: run the frontend tests and fix the legacy migration test
-
-Why: `scripts/test-navigation.cjs` (34 tests from PR #5 and PR #8) does not run
-in CI, and `cmd/migrate-legacy`'s opt-in test reads a file that no longer
-exists (`internal/app/schema.sql`), as found in PR #2.
-
-Work:
-
-1. Add a CI step that runs `node --test scripts/test-navigation.cjs` with a
-   pinned Node version and a SHA-pinned setup action, like the other actions
-   in `.github/workflows/ci.yml`.
-2. Fix `cmd/migrate-legacy/main_test.go` so it builds its schema from the
-   current migrations instead of `internal/app/schema.sql`. Keep the test
-   opt-in (`TEST_MIGRATION_DATABASE_URL`).
-
-Acceptance: the CI log shows the 34 navigation tests running; the legacy test
-passes locally against an isolated database.
-
-### T10. Add the durable job queue (`jobs` table and `internal/jobs`)
-
-- [x] Done — merged in [PR #13](https://github.com/Netriun-com/netriun-nexus/pull/13).
+### T17. Add the `resources` and `resource_relations` tables and store
 
 Work:
 
-1. Migration: `jobs` table with at least `id`, `kind`, `payload` (JSONB),
-   `status` (`queued`, `running`, `succeeded`, `failed`), `priority`,
-   `attempts`, `max_attempts`, `run_after`, `locked_by`, `locked_until`,
-   `concurrency_key`, `dedupe_key` (unique while queued or running),
-   `last_error`, `created_at`, `updated_at`. Index for claiming due jobs.
-2. Package `internal/jobs` with: `Enqueue` (returns the existing job when the
-   same `dedupe_key` is already queued or running), `Claim` using
-   `FOR UPDATE SKIP LOCKED` that respects per-`concurrency_key` limits,
-   lease renewal, `Complete`, `Fail` (exponential backoff until
-   `max_attempts`), and reclaiming jobs whose lease expired.
-3. No caller uses it yet. No HTTP changes.
+1. Migration: `resources` with the columns from the architecture
+   (`workspace_id`, `account_id`, `provider`, `service`, `kind`, `region`,
+   `provider_id`, `name`, `state`, `tags` JSONB, `summary` JSONB, `details`
+   JSONB, `seen_at`, `version`, `created_at`, `updated_at`), unique on
+   `(account_id, service, region, kind, provider_id)`, foreign keys with
+   `ON DELETE CASCADE` to `cloud_accounts`.
+2. Migration: `resource_relations(from_id, to_id, relation)` with a unique key,
+   cascade deletes, and indexes on `from_id` and `to_id`.
+3. Indexes: `(workspace_id, account_id, service, region)` for lists,
+   `(workspace_id, kind, name, id)` for sorted pages, and `pg_trgm` GIN indexes
+   on `name` and `provider_id` for search. Use `CREATE EXTENSION IF NOT EXISTS
+   pg_trgm`; document in the README that the database role needs permission
+   to create it (it is a trusted extension since PostgreSQL 13).
+4. A store package `internal/resources` with:
+   - `Reconcile(ctx, tx, scope, items, relations)`: upsert what the provider
+     returned and delete only unseen rows of the same account, service, and
+     region (and kind), in one transaction, only after a fully successful
+     collection. It takes the caller's transaction so the sync handler can
+     fence it with the job lease.
+   - `version` increases only when `name`, `state`, `tags`, `summary`, or
+     `details` actually change (phase 5 will emit events from it).
+   - `List(ctx, workspace, accounts, filter, cursor, limit)` returning
+     `summary` only, and `Get(ctx, workspace, accounts, id)` returning
+     `details` and relations.
+5. No writer or HTTP route uses the store yet.
 
-Acceptance (tests against PostgreSQL):
+Acceptance: PostgreSQL tests for reconcile (upsert, unseen delete per scope,
+unchanged rows keep their `version`, a failed scope leaves rows untouched),
+workspace and account isolation in `List` and `Get`, cursor pagination with no
+duplicates or gaps while rows are inserted, and `EXPLAIN` showing the
+`pg_trgm` index used for a `q` search.
 
-- Two concurrent claimers never get the same job.
-- A job whose worker stops renewing its lease is picked up by another claimer.
-- A concurrency key with limit N never has more than N running jobs.
-- Duplicate `Enqueue` with the same `dedupe_key` returns the same job.
-- Failed jobs back off and stop after `max_attempts`.
-
-### T11. Add the `nexus worker` role
-
-- [x] Done — merged in [PR #14](https://github.com/Netriun-com/netriun-nexus/pull/14).
-
-Work:
-
-1. `cmd/nexus` accepts a role: `serve` (HTTP only), `worker` (job loop only),
-   or `all` (both). Default is `all`, so current installs keep working
-   unchanged. Choose flag or environment variable and document it.
-2. The worker runs a pool of goroutines that claim and run jobs from T10 by
-   `kind`, with a registry of handlers. Graceful shutdown on SIGTERM stops
-   claiming, lets running jobs finish within a timeout, then releases leases.
-3. Compose keeps one combined container. The Helm chart gets an option to run
-   a separate worker Deployment (off by default).
-4. Health: `/readyz` for `serve`; a simple liveness signal for `worker`.
-
-Acceptance: a test job kind runs in `all` and in separate `serve` + `worker`
-processes; killing the worker mid-job leads to the job being re-run after the
-lease expires; Helm lint and template pass with the worker option on and off.
-
-### T12. Add `sync_state` and the scheduler
-
-- [x] Done — merged in [PR #15](https://github.com/Netriun-com/netriun-nexus/pull/15), including the approved account-wide `*` scopes until T14.
+### T18. Add the provider interface and compute adapters
 
 Work:
 
-1. Migration: `sync_state` with one row per account + service + region and
-   `interval`, `last_started_at`, `last_success_at`, `last_error`,
-   `last_error_code`, `next_due_at`, `empty` (no resources found last time).
-2. Rows are created and removed when accounts are added, deleted, or their
-   region selection changes, and for every service the provider supports
-   today (compute for all four providers; EDS desktops, EDS users, OSS, and
-   security groups for Alibaba).
-3. A scheduler loop in the worker enqueues one sync job per due row, with a
-   `dedupe_key` per row, so a row never has two jobs. Default intervals from
-   the architecture: instances and desktops 5 minutes; security groups 15
-   minutes; buckets 60 minutes; regions marked empty 6 hours.
-4. In this task the sync job handlers only call today's existing collection
-   code for that account, service, and region. Moving the code is T13 and T14.
+1. `internal/providers` defines the interface from the architecture without
+   `Apply` (that comes in phase 7):
+   `Services() []ServiceSpec`, `List(ctx, account, service, region)
+   ([]Resource, []Relation, error)`, `Get(ctx, account, kind, id)`.
+   `Resource` and `Relation` match the T17 columns but do not import the store.
+2. One package per provider (`internal/providers/aws`, `alibaba`, `azure`,
+   `gcp`) wrapping today's `internal/cloud` clients. In this task each adapter
+   implements the `compute` service only (kind `instance`), mapping provider
+   objects to the shared fields and keeping the provider's own type name in
+   `summary` (for example `ECS instance`, `EC2 instance`).
+3. A registry that returns the adapter for a provider name, so callers never
+   `switch` on provider names.
+4. Recorded-response tests for each adapter (HTTP fixtures or SDK test
+   doubles), including pagination and an error page. CI uses no real
+   credentials.
+5. No sync code changes yet.
 
-Acceptance: with the worker running and no browser open, every enabled row is
-synced on schedule; empty regions move to the 6-hour interval; stopping and
-starting the worker does not lose or duplicate scheduled work.
+Acceptance: each adapter's `List` returns the same instances as today's
+`internal/cloud` inventory function for the same recorded responses; `go test`
+passes without network access.
 
-### T13. Move compute inventory refresh onto the queue
-
-- [x] Implemented in this PR.
-
-Work:
-
-1. Compute sync becomes one job per account + region (job kind for example
-   `sync.compute`), using the existing provider collectors and reconciliation
-   (failed regions keep their previous rows).
-2. `POST /api/v1/inventory/refresh` enqueues high-priority jobs for the
-   selected accounts and returns a job id the existing status endpoint can
-   report on; the response shape stays compatible with the current UI.
-3. Errors are written to `sync_state` and `cloud_accounts.sync_error` with a
-   fresh context, not the job's possibly cancelled context.
-4. Remove the Valkey-based inventory job runner in `refresh_jobs.go` and the
-   global `accountSlots`/`regionSlots` once nothing uses them.
-
-Acceptance: a refresh survives a server restart; one slow account does not
-delay another account's refresh (test with a fake slow provider); existing
-inventory integration tests still pass.
-
-### T14. Move EDS, OSS, and security group refresh onto the queue
-
-- [x] Done — durable service refreshes, regional snapshots, and lease fencing.
-
-Same pattern as T13 for `eds_refresh.go`, OSS, and security groups: one job per
-account + service + region, existing refresh endpoints enqueue high-priority
-jobs and keep their response shapes, errors go to `sync_state`. Remove the old
-in-process runners when unused.
-
-Acceptance: as in T13, for each of the three services.
-
-### T15. Pages stop triggering sync
-
-- [x] Implemented in this PR: read-only sync status, visible-page polling, no navigation refreshes, and separate Helm workers by default.
+### T19. Compute sync writes `resources`
 
 Work:
 
-1. In `internal/app/web/app.js`, page navigation and scope changes never start
-   a refresh. Only the refresh button and the post-action follow-ups from
-   PR #8 do.
-2. Each list shows "last synced" and any per-region error from `sync_state`
-   (add a small read endpoint if needed, documented in `docs/openapi.json`).
-3. Update `scripts/test-navigation.cjs` for the new rule.
+1. The `compute` sync handler collects through the T18 adapter and, in the same
+   lease-fenced transaction as today's `instances` reconcile, calls the T17
+   store to reconcile `resources` (kind `instance`).
+2. Keep writing the `instances` table (dual write); no read path changes.
+3. Failed regions keep their previous `resources` rows, exactly like
+   `instances`.
+4. Remove the `switch provider` blocks in the compute collector that the
+   adapter registry replaces.
 
-Acceptance: opening any page sends no refresh request; data still becomes fresh
-on its own within its interval; the README and in-app docs describe the
-scheduler accurately.
+Acceptance: after a sync, `instances` and `resources` contain the same
+instances for every account and region (PostgreSQL test with recorded
+responses); a stale lease writes neither; existing compute integration tests
+still pass.
 
-### T16. Run audit retention as a scheduled job
+### T20. EDS, OSS, and security groups write `resources`
 
-- [x] Implemented in this PR: per-workspace durable retention jobs, bounded batches, configurable cadence, and PostgreSQL coverage.
+Work: same pattern as T19 for EDS desktops (kind `desktop`), EDS users (kind
+`directory_user`), OSS buckets (kind `bucket`, region from the bucket's own
+location), and security groups (kind `security_group`, with rules in
+`details`). Add these services to the Alibaba adapter. Keep writing
+`service_snapshots` (dual write).
 
-Why: audit deletion only runs at the end of `collectAccounts`
-(`internal/app/collector.go`), so with no refreshes, retention never runs.
+Acceptance: as in T19, for each service; the existing EDS, OSS, and security
+group integration tests still pass.
 
-Work: a daily job per workspace that deletes audit records older than
-`audit_retention_days`, scheduled by the T12 scheduler; remove the deletion
-from `collectAccounts`.
+### T21. Add `GET /api/v1/resources` and `GET /api/v1/resources/{id}`
 
-Acceptance: integration test shows old audit rows are removed by the job and
-not by a refresh.
+Work:
+
+1. `GET /api/v1/resources` with filters `kind`, `account_ids`, `region`,
+   `state`, `service`, and `q` (search on name and provider id using the
+   `pg_trgm` index), sorted by name, with an opaque cursor and `limit`
+   (default 50, maximum 200). Returns `summary`, never `details`.
+2. `GET /api/v1/resources/{id}` returns `details` and the resource's relations
+   (both directions, with the related resource's `kind` and `name`).
+3. Both routes filter by workspace and the caller's accessible accounts; an
+   inaccessible or other-workspace id returns 404.
+4. Document both routes in `docs/openapi.json`.
+
+Acceptance: PostgreSQL tests for every filter, cursor paging, 404 isolation,
+and that `details` never appears in the list; with 100,000 seeded resources a
+filtered page responds in under one second locally (report the measurement in
+the PR).
+
+### T22. Sync networks, subnets, and load balancers for Alibaba and AWS
+
+Work:
+
+1. New `network` service in `sync_state` for Alibaba and AWS accounts, per
+   region, default interval 15 minutes (architecture "Sync engine"),
+   configurable like the other intervals.
+2. Adapters list networks (AWS VPC, Alibaba VPC), subnets (AWS subnet,
+   Alibaba VSwitch), and load balancers (AWS ELBv2; Alibaba CLB/SLB and ALB),
+   with kinds `network`, `subnet`, `load_balancer`.
+3. Relations: `subnet in_network network`, `instance in_subnet subnet`,
+   `instance uses_rule security_group`, `load_balancer in_network network`,
+   `instance behind_lb load_balancer`. Relations to resources from other
+   services are written when both ends exist; a missing end is skipped, not an
+   error.
+4. Read-only: no create, change, or delete calls (phase 7).
+5. Link the official API reference for every call in the PR description.
+
+Acceptance: recorded-response tests per provider and kind; PostgreSQL test
+that a full sync produces the expected relations; a failed region keeps its
+previous network rows; the existing services are unaffected.
+
+### T23. Every list reads `resources`; old writes stop
+
+Work:
+
+1. The existing endpoints (`/instances`, EDS, OSS, security groups, summary,
+   reports) read from `resources` and keep their response shapes, so the
+   current UI works unchanged. Instance actions and details look up the
+   resource through `resources`.
+2. Search uses the `pg_trgm` index; remove the `ILIKE` scans on `instances`.
+3. Sync stops writing `instances` and `service_snapshots`. The tables stay
+   (dropped in a later phase after a release); add a comment in a new
+   migration marking them deprecated.
+4. Update the README and in-app docs.
+
+Acceptance: every existing integration and navigation test passes against
+`resources`; with 100,000 seeded resources every list endpoint responds in
+under one second locally (measurements in the PR); no code path writes
+`instances` or `service_snapshots`.
 
 ---
 
 ## Next
 
-When phase 3 is done, Claude writes the phase 4 tasks (one `resources` model
-and `/api/v1/resources`) here for review before work starts.
+When phase 4 is done, Claude writes the phase 5 tasks (SSE live updates) here
+for review before work starts.
