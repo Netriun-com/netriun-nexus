@@ -162,7 +162,8 @@ role needs permission to install the extension (including `CREATE` on the
 database and the target schema), or a database administrator must install it
 first. `pg_trgm` is a trusted extension since PostgreSQL 13; superuser access is
 not required when the role has the necessary privileges. An existing extension
-in another schema is reused. See the official [pg_trgm documentation](https://www.postgresql.org/docs/17/pgtrgm.html)
+in another schema is reused; the migration role needs `USAGE` on that schema.
+See the official [pg_trgm documentation](https://www.postgresql.org/docs/17/pgtrgm.html)
 and [CREATE EXTENSION requirements](https://www.postgresql.org/docs/17/sql-createextension.html).
 
 `resources.Reconcile` takes the caller's `pgx.Tx`, one workspace/account/service/
