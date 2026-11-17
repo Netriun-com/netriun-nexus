@@ -168,6 +168,8 @@ Acceptance:
 
 ### T5. Enforce pull-request-only changes on `main` (Saheb)
 
+- [x] Done — `main` is protected (pull request, one approval, required checks), confirmed by Saheb on 2026-11-17.
+
 This task is for Saheb, not Codex: in the GitHub repository settings, protect
 `main` so that changes need a pull request with one approving review and a
 green `CI` workflow. The existing rule against force-push and deletion stays.
