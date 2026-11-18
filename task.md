@@ -318,6 +318,8 @@ Rules for this phase, in addition to "Rules for every task":
 
 ### T17. Add the `resources` and `resource_relations` tables and store
 
+- [x] Done — schema, transactional reconciliation, scoped reads, and cursor pagination; runtime wiring remains in later tasks.
+
 Work:
 
 1. Migration: `resources` with the columns from the architecture

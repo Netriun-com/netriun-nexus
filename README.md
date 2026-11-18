@@ -150,6 +150,41 @@ Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided
 
 ## Operation and limitations
 
+### Resource catalog storage
+
+Migration `016_resources.sql` adds the `resources` and `resource_relations`
+tables and `internal/resources` store for phase 4. They are not connected to
+collectors or HTTP routes yet; existing inventories and snapshots remain in use.
+
+The migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`.
+The database server must provide the `pg_trgm` extension files. The migration
+role needs permission to install the extension (including `CREATE` on the
+database and the target schema), or a database administrator must install it
+first. `pg_trgm` is a trusted extension since PostgreSQL 13; superuser access is
+not required when the role has the necessary privileges. An existing extension
+in another schema is reused; the migration role needs `USAGE` on that schema.
+See the official [pg_trgm documentation](https://www.postgresql.org/docs/17/pgtrgm.html)
+and [CREATE EXTENSION requirements](https://www.postgresql.org/docs/17/sql-createextension.html).
+
+`resources.Reconcile` takes the caller's `pgx.Tx`, one workspace/account/service/
+region/kind scope, and a fully successful collection. Future sync writers must
+check their job lease in that transaction and roll it back on failure; the store
+never opens or commits a transaction. It replaces only that scope's unseen
+resources and outgoing relations. Missing relation targets are skipped until a
+later collection discovers them. Account deletion cascades to resources and
+relations. Only changes to name, state, tags, summary, or details increase a
+resource's version; unchanged collections advance `seen_at` alone.
+
+`List` requires a workspace and explicit accessible account IDs, returns summary
+fields without details, and supports kind, service, region, state, and literal
+substring `q` filters. `Get` applies the same access scope to the resource and
+both ends of its relations. Lists sort by name and ID with an opaque cursor;
+page sizes default to 50 and are capped at 200. A traversal retains its first
+page's ID ceiling, so resources inserted between pages appear on the next
+traversal instead. Filters and account access must remain the same. This is not
+a transaction spanning pages: concurrent renames, deletions, or commits of
+previously allocated IDs can change the result set.
+
 ### Process roles and durable workers
 
 `NEXUS_ROLE` accepts `serve`, `worker`, or `all` (the default). Invalid roles
