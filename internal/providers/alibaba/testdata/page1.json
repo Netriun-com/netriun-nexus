@@ -1,0 +1,46 @@
+{
+  "RequestId": "fixture",
+  "Instances": {
+    "Instance": [
+      {
+        "InstanceId": "i-1",
+        "InstanceName": "vm-1",
+        "Status": "Running",
+        "InstanceType": "ecs.g6.large",
+        "CreationTime": "2026-01-02T03:04:05Z",
+        "VpcAttributes": {
+          "VpcId": "vpc-one",
+          "VSwitchId": "vsw-one",
+          "PrivateIpAddress": {
+            "IpAddress": [
+              "10.0.0.1"
+            ]
+          }
+        },
+        "Tags": {
+          "Tag": [
+            {
+              "TagKey": "team",
+              "TagValue": "platform"
+            }
+          ]
+        },
+        "SecurityGroupIds": {
+          "SecurityGroupId": [
+            "sg-one"
+          ]
+        },
+        "ZoneId": "cn-hangzhou-a",
+        "ImageId": "image-one",
+        "OSNameEn": "Linux",
+        "InstanceChargeType": "PostPaid",
+        "PublicIpAddress": {
+          "IpAddress": [
+            "203.0.113.1"
+          ]
+        }
+      }
+    ]
+  },
+  "NextToken": "page-two"
+}

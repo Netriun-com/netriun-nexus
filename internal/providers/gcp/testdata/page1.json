@@ -1,0 +1,37 @@
+{
+  "items": {
+    "zones/europe-west1-b": {
+      "instances": [
+        {
+          "id": "9001",
+          "name": "vm-1",
+          "zone": "zones/europe-west1-b",
+          "status": "RUNNING",
+          "machineType": "machineTypes/e2-small",
+          "creationTimestamp": "2026-01-02T03:04:05Z",
+          "labels": {
+            "team": "platform"
+          },
+          "tags": {
+            "items": [
+              "web"
+            ]
+          },
+          "networkInterfaces": [
+            {
+              "network": "networks/default",
+              "subnetwork": "subnetworks/sub-one",
+              "networkIP": "10.0.0.1",
+              "accessConfigs": [
+                {
+                  "natIP": "203.0.113.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "nextPageToken": "page-two"
+}

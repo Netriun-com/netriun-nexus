@@ -1,0 +1,10 @@
+{
+  "computerName": "fixture-vm",
+  "osName": "Linux",
+  "osVersion": "1",
+  "statuses": [
+    {
+      "code": "PowerState/running"
+    }
+  ]
+}
