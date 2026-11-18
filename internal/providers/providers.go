@@ -63,10 +63,21 @@ type Resource struct {
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
+// Reference identifies a resource within the collection's account scope using
+// provider identity. Persistence resolves it to a database ID during reconcile.
+type Reference struct {
+	Service    string `json:"service"`
+	Region     string `json:"region"`
+	Kind       string `json:"kind"`
+	ProviderID string `json:"provider_id"`
+}
+
+// Relation connects provider references within the collection's account scope;
+// adapters do not need database IDs to describe either end.
 type Relation struct {
-	FromID   int64  `json:"from_id"`
-	ToID     int64  `json:"to_id"`
-	Relation string `json:"relation"`
+	From     Reference `json:"from"`
+	To       Reference `json:"to"`
+	Relation string    `json:"relation"`
 }
 
 type Provider interface {

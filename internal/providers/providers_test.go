@@ -5,10 +5,21 @@ package providers_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/netriun/nexus/internal/providers"
 )
+
+func ExampleRelation() {
+	relation := providers.Relation{
+		From:     providers.Reference{Service: "compute", Region: "us-east-1", Kind: "instance", ProviderID: "i-one"},
+		To:       providers.Reference{Service: "network", Region: "us-east-1", Kind: "subnet", ProviderID: "subnet-one"},
+		Relation: "in_subnet",
+	}
+	fmt.Printf("%s %s %s\n", relation.From.ProviderID, relation.Relation, relation.To.ProviderID)
+	// Output: i-one in_subnet subnet-one
+}
 
 type stub struct{}
 

@@ -1,8 +1,10 @@
 # Provider adapters
 
 T18 adds an unwired compute contract for T19. `internal/providers` has no store
-or adapter imports. `Resource` and `Relation` mirror the T17 column names;
-`ID`, `Version`, `CreatedAt`, and `UpdatedAt` are assigned by persistence.
+or adapter imports. `Resource` mirrors the T17 columns; relations use the same
+`Reference{Service, Region, Kind, ProviderID}` shape as the T17 store for both
+ends, within the collection's account scope. Persistence resolves references
+to database IDs and assigns `ID`, `Version`, `CreatedAt`, and `UpdatedAt`.
 Adapters set account/workspace identity and one UTC `SeenAt` per successful list.
 
 Each provider package exports `New(ClientFactory)`. The factory receives an
