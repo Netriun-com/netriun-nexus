@@ -973,6 +973,7 @@ func TestIntegration(t *testing.T) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}
 	}
+	t.Run("ResourcesAPI", func(t *testing.T) { testResourcesAPI(t, a) })
 	// Rate limiting is atomic and independent of email.
 	for i := 0; i < 21; i++ {
 		r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"none@example.com","password":"bad"}`))

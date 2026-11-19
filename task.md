@@ -410,6 +410,8 @@ group integration tests still pass.
 
 ### T21. Add `GET /api/v1/resources` and `GET /api/v1/resources/{id}`
 
+- [x] Done — scoped list/detail routes, cursor pagination, API documentation, and PostgreSQL access/performance tests; runtime writers remain in later tasks.
+
 Work:
 
 1. `GET /api/v1/resources` with filters `kind`, `account_ids`, `region`,
