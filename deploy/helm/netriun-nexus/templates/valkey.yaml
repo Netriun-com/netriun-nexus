@@ -13,6 +13,8 @@ metadata:
     app.kubernetes.io/component: legacy-redis-storage
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   capacity:
     storage: {{ .Values.valkey.legacyRedisStorage.size }}
@@ -40,6 +42,8 @@ metadata:
     app.kubernetes.io/component: legacy-redis-storage
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: ""
@@ -59,6 +63,8 @@ metadata:
     app.kubernetes.io/name: {{ .Values.valkey.name }}
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   capacity:
     storage: {{ .Values.valkey.persistence.size }}
@@ -84,6 +90,8 @@ metadata:
   name: {{ .Values.valkey.name }}
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: ""

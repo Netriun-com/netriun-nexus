@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Netriun staging cluster (kubeadm, nodes k8s-cp01, k8s-node01, k8s-node02).
+# Deployed by Argo CD into namespace `nexus` from the platform GitOps repo.
+# Public access: Cloudflare Tunnel (namespace `cloudflared`) with Cloudflare
+# Access in front of https://nexus-staging.netriun.com. No Ingress is used.
+#
+# Create Secret `netriun-nexus` in namespace `nexus` before the first sync;
+# no secret values belong in Git. See README "Argo CD on the Netriun cluster".
+
+fullnameOverride: nexus
+
+service:
+  name: nexus-service
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+
+config:
+  appOrigin: https://nexus-staging.netriun.com
+  cookieSecure: "true"
+  # Calico default-ipv4-ippool; cloudflared reaches Nexus from this range.
+  trustedProxyCidrs: "10.244.0.0/16"
+  smtp:
+    host: smtp.gmail.com
+    port: "587"
+    fromAddress: s.amrei@netriun.com
+    fromName: Netriun Nexus
+
+existingSecret: netriun-nexus
+
+networkPolicy:
+  enabled: true
+  webIngressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflared
+
+# No Enterprise pods run on this cluster.
+enterprise:
+  networkPolicy:
+    enabled: false
+
+postgresql:
+  enabled: true
+  persistence:
+    nodeName: k8s-node01
+
+valkey:
+  enabled: true
+  persistence:
+    nodeName: k8s-node01
+  legacyRedisStorage:
+    enabled: false

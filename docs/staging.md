@@ -6,16 +6,20 @@ state.
 
 ## Current shared preview
 
-The existing local-cluster deployment remains the product preview while the
-self-hosted foundation is built:
+The product preview moved to the Netriun staging cluster in November 2026:
 
 | Setting | Value |
 | --- | --- |
-| Kubernetes namespace | `nexus-nteriun` |
-| Helm release | `nexus` |
+| Kubernetes namespace | `nexus` |
+| Deployment | Argo CD Application `netriun-nexus` (platform GitOps repo) |
+| Helm values | `deploy/helm/netriun-nexus/values-netriun-k8s.yaml` |
 | Service | `nexus-service` |
-| Public hostname | `nexus.netriun.com` |
-| Ingress path | Cloudflare Tunnel to in-cluster HTTP service |
+| Public hostname | `nexus-staging.netriun.com` |
+| Ingress path | Cloudflare Tunnel (namespace `cloudflared`) with Cloudflare Access |
+
+The previous local-cluster deployment (namespace `nexus-nteriun`, hostname
+`nexus.netriun.com`, `values-local.yaml`) stays on `v0.1.35` as the rollback
+path until it is retired. `nexus.netriun.com` returns after the MVP.
 
 This environment is not an isolated release gate. It may contain development
 data and credentials and must not be used to validate destructive migrations.
