@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/name: {{ .Values.postgresql.name }}
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   capacity:
     storage: {{ .Values.postgresql.persistence.size }}
@@ -34,6 +36,8 @@ metadata:
   name: {{ .Values.postgresql.name }}
   annotations:
     helm.sh/resource-policy: keep
+    # Argo CD does not document Helm's keep policy; never prune or delete data volumes.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: ""

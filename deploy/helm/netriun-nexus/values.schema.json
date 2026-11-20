@@ -43,6 +43,17 @@
       }
     },
     "existingSecret": { "type": "string", "minLength": 1 },
+    "networkPolicy": {
+      "type": "object",
+      "required": ["enabled", "webIngressFrom"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "webIngressFrom": {
+          "type": "array",
+          "items": { "type": "object", "minProperties": 1 }
+        }
+      }
+    },
     "enterprise": {
       "type": "object",
       "required": ["networkPolicy"],

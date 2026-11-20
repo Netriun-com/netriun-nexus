@@ -35,7 +35,7 @@ worker:
 
 image:
   repository: ghcr.io/netriun-com/netriun-nexus
-  tag: "0.1.35"
+  tag: "0.1.36"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -93,6 +93,16 @@ config:
     port: "587"
     fromAddress: s.amrei@netriun.com
     fromName: Netriun Nexus
+
+# Optional ingress NetworkPolicies for web, worker, and the bundled PostgreSQL
+# and Valkey pods. Egress is not restricted (cloud APIs and SMTP). When enabled,
+# webIngressFrom must list the peers allowed to reach the web pods on HTTP.
+networkPolicy:
+  enabled: false
+  webIngressFrom: []
+  # - namespaceSelector:
+  #     matchLabels:
+  #       kubernetes.io/metadata.name: cloudflared
 
 # Legacy Enterprise NetworkPolicy retained until its separate T8 extraction.
 enterprise:

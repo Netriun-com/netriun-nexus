@@ -179,3 +179,34 @@ before treating the cluster as highly available.
 The former `nexus-redis` PVC is intentionally retained during the Valkey
 rollback window. See [the migration record](../../../docs/redis-licensing.md)
 before rollback or cleanup.
+
+## Argo CD on the Netriun staging cluster
+
+The Netriun staging cluster (`k8s-cp01`, `k8s-node01`, `k8s-node02`) runs Nexus
+in namespace `nexus` with `values-netriun-k8s.yaml`. Argo CD deploys it from a
+release tag of this chart; the Argo CD `Application` and the shared Cloudflare
+Tunnel connector live in the platform GitOps repository
+(`Netriun-com/netriun-platform`). The public hostname is
+`https://nexus-staging.netriun.com`, served through Cloudflare Tunnel with
+Cloudflare Access in front.
+
+Create the application Secret in namespace `nexus` before the first sync. Copy
+`ENCRYPTION_KEY` byte-for-byte from the previous installation; stored cloud
+credentials cannot be decrypted with a different key.
+
+`networkPolicy.enabled` adds ingress NetworkPolicies: web pods accept HTTP only
+from the `webIngressFrom` peers (here the `cloudflared` namespace), worker pods
+accept no traffic, and the bundled PostgreSQL and Valkey accept only Nexus pods.
+Egress is not restricted. Kubelet probes are unaffected.
+
+The bundled PostgreSQL and Valkey PersistentVolumes and claims carry
+`argocd.argoproj.io/sync-options: Prune=false,Delete=false` in addition to
+`helm.sh/resource-policy: keep`, so pruning or deleting the Argo CD
+Application never removes the data volumes. Remove them by hand only after a
+verified backup.
+
+```sh
+helm lint deploy/helm/netriun-nexus -f deploy/helm/netriun-nexus/values-netriun-k8s.yaml
+helm template nexus deploy/helm/netriun-nexus -n nexus \
+  -f deploy/helm/netriun-nexus/values-netriun-k8s.yaml
+```
