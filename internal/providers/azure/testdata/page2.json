@@ -1,0 +1,28 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-2",
+      "name": "vm-2",
+      "location": "westus",
+      "tags": {
+        "team": "platform"
+      },
+      "zones": [
+        "1"
+      ],
+      "properties": {
+        "provisioningState": "Succeeded",
+        "hardwareProfile": {
+          "vmSize": "Standard_B2s"
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "/subscriptions/sub/networkInterfaces/nic-one"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

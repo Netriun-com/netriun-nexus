@@ -1,0 +1,29 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-1",
+      "name": "vm-1",
+      "location": "eastus",
+      "tags": {
+        "team": "platform"
+      },
+      "zones": [
+        "1"
+      ],
+      "properties": {
+        "provisioningState": "Succeeded",
+        "hardwareProfile": {
+          "vmSize": "Standard_B2s"
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "/subscriptions/sub/networkInterfaces/nic-one"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "nextLink": "https://management.azure.com/subscriptions/sub/providers/Microsoft.Compute/virtualMachines?api-version=2024-07-01&$skiptoken=page-two"
+}

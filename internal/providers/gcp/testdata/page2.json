@@ -1,0 +1,36 @@
+{
+  "items": {
+    "zones/us-central1-a": {
+      "instances": [
+        {
+          "id": "9002",
+          "name": "vm-2",
+          "zone": "zones/us-central1-a",
+          "status": "TERMINATED",
+          "machineType": "machineTypes/e2-small",
+          "creationTimestamp": "2026-01-02T03:04:05Z",
+          "labels": {
+            "team": "platform"
+          },
+          "tags": {
+            "items": [
+              "web"
+            ]
+          },
+          "networkInterfaces": [
+            {
+              "network": "networks/default",
+              "subnetwork": "subnetworks/sub-one",
+              "networkIP": "10.0.0.2",
+              "accessConfigs": [
+                {
+                  "natIP": "203.0.113.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

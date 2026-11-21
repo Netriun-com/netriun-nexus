@@ -133,6 +133,10 @@ software license.
 
 ## Go development
 
+The [provider adapter contract](internal/providers/README.md) defines the new
+compute resource mapping and offline fixture tests. Runtime integration follows
+in T19.
+
 Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Valkey in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default. The `REDIS_URL` name remains for protocol compatibility.
 
 Email verification uses SMTP with mandatory STARTTLS. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`; use an app password rather than a primary mailbox password.
