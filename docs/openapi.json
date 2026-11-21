@@ -19,6 +19,212 @@
     }
   ],
   "paths": {
+    "/resources": {
+      "get": {
+        "summary": "List stored resource summaries",
+        "description": "Reads only the Nexus database; never starts a provider collection. Requires account.view access. Without account selection, includes all accessible accounts in the caller's workspace (possibly across providers). An empty accessible set returns {\"data\": []}. Filters are combined with AND; empty string filters are omitted. Sorted by name using the database collation, then by id. Returns summary, never details. No runtime collector populates this catalog yet; population is introduced in later phase 4 tasks.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Exact resource kind, for example instance or network.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "description": "Comma-separated positive account IDs, up to 100 entries; whitespace is trimmed and duplicates are removed. Explicit selections must belong to one provider and every account must be accessible; otherwise 400 (invalid/mixed-provider selection) or 403 (inaccessible). Omit or leave empty for all accessible accounts, unless account_id is supplied.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Compatibility alias used only when account_ids is absent or blank; accepts the same comma-separated format and validation.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "description": "Exact stored region, including * for an account-wide resource.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Exact stored resource state.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Exact service key, for example compute or eds.desktops.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Case-insensitive literal substring of name OR provider_id, using the pg_trgm indexes when chosen by PostgreSQL. %, _ and backslash are treated literally.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque next_cursor from the preceding page, URL-encoded; omit or leave empty for the first page. Keep workspace, selected accessible account set and all filters unchanged. Malformed or scope-mismatched cursors return 400. The first page fixes an ID ceiling: later inserts appear in a new traversal. This is not a transaction snapshot across pages; concurrent renames, deletions or commits of previously allocated IDs can change membership. The page size may change between requests.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size. Omit for 50. Empty, non-integer, zero, negative or greater than 200 returns 400.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary page. next_cursor is omitted when there is no following page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid limit, account selection, or cursor. A cursor with changed filters, workspace, or selected accessible account set is invalid; restart from the first page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or session expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An explicitly selected account is not accessible (same behavior as inventory).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Database operation could not be completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/resources/{id}": {
+      "get": {
+        "summary": "Get a stored resource with details and relations",
+        "description": "Reads only the Nexus database. Both the resource and each related endpoint are filtered by the caller's workspace and accounts accessible with account.view. Returns incoming and outgoing relations with the other resource's id, kind and name. Missing, inaccessible and other-workspace resources all return the same 404; existence is never revealed with 403.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive Nexus resource ID (not the provider ID).",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored resource, full details and authorized relations (empty array when none).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid resource ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or session expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found, including inaccessible or other-workspace IDs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Database operation could not be completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceAPIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "servers": [{"url": "/"}],
       "get": {
@@ -2039,6 +2245,184 @@
       }
     },
     "schemas": {
+      "ResourceAPIError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Plain-language error message."
+          }
+        }
+      },
+      "ResourceSummary": {
+        "type": "object",
+        "description": "Resource identity, state and small summary fields; never includes details.",
+        "required": [
+          "id",
+          "workspace_id",
+          "account_id",
+          "provider",
+          "service",
+          "kind",
+          "region",
+          "provider_id",
+          "name",
+          "state",
+          "tags",
+          "summary",
+          "seen_at",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "workspace_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "account_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "provider": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "tags": {
+            "description": "Stored JSON value."
+          },
+          "summary": {
+            "description": "Stored JSON value."
+          },
+          "seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResourceRelation": {
+        "type": "object",
+        "required": [
+          "from_id",
+          "to_id",
+          "relation",
+          "id",
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "from_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Source of the directed relation."
+          },
+          "to_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Target of the directed relation."
+          },
+          "relation": {
+            "type": "string",
+            "description": "Relation type, for example in_network."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The other endpoint, relative to the requested resource."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind of the other endpoint."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the other endpoint."
+          }
+        }
+      },
+      "ResourceDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResourceSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "details",
+              "relations"
+            ],
+            "properties": {
+              "details": {
+                "description": "Full stored JSON value."
+              },
+              "relations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ResourceRelation"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ResourcePage": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceSummary"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Opaque continuation cursor; omitted on the last page."
+          }
+        }
+      },
       "SyncState": {
         "type": "object",
         "required": [

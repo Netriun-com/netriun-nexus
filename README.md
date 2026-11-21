@@ -157,8 +157,10 @@ Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided
 ### Resource catalog storage
 
 Migration `016_resources.sql` adds the `resources` and `resource_relations`
-tables and `internal/resources` store for phase 4. They are not connected to
-collectors or HTTP routes yet; existing inventories and snapshots remain in use.
+tables and `internal/resources` store for phase 4. The authenticated
+`GET /api/v1/resources` and `GET /api/v1/resources/{id}` routes read this catalog.
+No runtime collector populates it yet; existing inventories and snapshots remain
+in use. The new routes return empty lists until later tasks add writers.
 
 The migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`.
 The database server must provide the `pg_trgm` extension files. The migration
@@ -183,7 +185,13 @@ resource's version; unchanged collections advance `seen_at` alone.
 fields without details, and supports kind, service, region, state, and literal
 substring `q` filters. `Get` applies the same access scope to the resource and
 both ends of its relations. Lists sort by name and ID with an opaque cursor;
-page sizes default to 50 and are capped at 200. A traversal retains its first
+page sizes default to 50. The HTTP API rejects limits outside 1–200 with 400.
+`account_ids` accepts up to 100 comma-separated IDs from one provider, checked
+against `account.view` access just like inventory; omit it for all accessible
+accounts. Unauthorized selections return 403, while missing or inaccessible
+resource IDs return 404. Invalid cursors or changed filters/account access return
+400 with a plain message. Both routes and all parameters are documented in
+[the OpenAPI contract](docs/openapi.json). A traversal retains its first
 page's ID ceiling, so resources inserted between pages appear on the next
 traversal instead. Filters and account access must remain the same. This is not
 a transaction spanning pages: concurrent renames, deletions, or commits of

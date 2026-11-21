@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netriun/nexus/internal/entitlements"
 	"github.com/netriun/nexus/internal/entitlements/commercialplatform"
+	"github.com/netriun/nexus/internal/resources"
 	"github.com/netriun/nexus/internal/secure"
 	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +32,7 @@ import (
 var assets embed.FS
 
 type App struct {
+	Resources      *resources.Store
 	Sync           *syncer.Store
 	DB             *pgxpool.Pool
 	Redis          *redis.Client
@@ -94,6 +96,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer}
 	a.Policy = &PolicyEngine{DB: db}
+	a.Resources = resources.New(db)
 	a.Sync = syncer.New(db, syncConfig)
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
@@ -244,6 +247,7 @@ func (a *App) Handler() http.Handler {
 	m.HandleFunc("GET /sso/{provider}/slo", a.samlLogoutCallback)
 	m.HandleFunc("POST /sso/{provider}/slo", a.samlLogoutCallback)
 	routes := map[string]http.HandlerFunc{
+		"GET /api/v1/resources": a.listResources, "GET /api/v1/resources/{id}": a.getResource,
 		"GET /api/v1/entitlements":                   a.entitlementStatus,
 		"GET /api/v1/installation":                   a.installationStatus,
 		"GET /api/v1/summary":                        a.summary,
@@ -285,7 +289,7 @@ func (a *App) Handler() http.Handler {
 		"GET /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings, "PUT /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings,
 		"DELETE /api/v1/identity-providers/{id}/group-mappings/{mappingID}": a.deleteIdentityGroupMapping, "PUT /api/v1/sso-settings": a.saveSSOSettings,
 		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings,
-		"GET /api/v1/sync-state": a.syncState,
+		"GET /api/v1/sync-state":         a.syncState,
 		"POST /api/v1/inventory/refresh": a.refreshInventory, "GET /api/v1/inventory/refresh/{jobID}": a.inventoryRefreshStatus,
 	}
 	for pattern, h := range routes {
