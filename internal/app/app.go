@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netriun/nexus/internal/entitlements"
 	"github.com/netriun/nexus/internal/entitlements/commercialplatform"
+	"github.com/netriun/nexus/internal/providers"
 	"github.com/netriun/nexus/internal/resources"
 	"github.com/netriun/nexus/internal/secure"
 	syncer "github.com/netriun/nexus/internal/sync"
@@ -32,6 +33,7 @@ import (
 var assets embed.FS
 
 type App struct {
+	Providers      *providers.Registry
 	Resources      *resources.Store
 	Sync           *syncer.Store
 	DB             *pgxpool.Pool

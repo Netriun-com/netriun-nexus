@@ -134,8 +134,8 @@ software license.
 ## Go development
 
 The [provider adapter contract](internal/providers/README.md) defines the new
-compute resource mapping and offline fixture tests. Runtime integration follows
-in T19.
+compute resource mapping and offline fixture tests. Compute sync uses the
+registry and writes both the legacy instances table and resource catalog.
 
 Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Valkey in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default. The `REDIS_URL` name remains for protocol compatibility.
 
@@ -159,8 +159,11 @@ Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided
 Migration `016_resources.sql` adds the `resources` and `resource_relations`
 tables and `internal/resources` store for phase 4. The authenticated
 `GET /api/v1/resources` and `GET /api/v1/resources/{id}` routes read this catalog.
-No runtime collector populates it yet; existing inventories and snapshots remain
-in use. The new routes return empty lists until later tasks add writers.
+Compute sync now populates the catalog alongside the legacy `instances` table
+in one lease-fenced transaction. Existing compute pages continue reading
+`instances`; other services still write snapshots until their assigned tasks.
+Compute scopes populate on their next scheduled or manual sync, with no startup
+backfill. Failed or cancelled collections preserve both tables.
 
 The migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`.
 The database server must provide the `pg_trgm` extension files. The migration
@@ -173,13 +176,21 @@ See the official [pg_trgm documentation](https://www.postgresql.org/docs/17/pgtr
 and [CREATE EXTENSION requirements](https://www.postgresql.org/docs/17/sql-createextension.html).
 
 `resources.Reconcile` takes the caller's `pgx.Tx`, one workspace/account/service/
-region/kind scope, and a fully successful collection. Future sync writers must
+region/kind scope, and a fully successful collection. Sync writers must
 check their job lease in that transaction and roll it back on failure; the store
 never opens or commits a transaction. It replaces only that scope's unseen
 resources and outgoing relations. Missing relation targets are skipped until a
 later collection discovers them. Account deletion cascades to resources and
 relations. Only changes to name, state, tags, summary, or details increase a
 resource's version; unchanged collections advance `seen_at` alone.
+
+Azure/GCP compute jobs have account-wide `*` scopes but store real regions.
+After applying the account's configured-region filter, reconciliation visits
+both returned and previously stored compute-instance regions in the same
+transaction, clearing disappeared regions with empty collections. An empty
+successful account-wide collection clears only that account's compute instances.
+See the [compute sync integration](internal/providers/README.md#compute-sync-integration)
+for the lease checks and region-scoping details.
 
 `List` requires a workspace and explicit accessible account IDs, returns summary
 fields without details, and supports kind, service, region, state, and literal
