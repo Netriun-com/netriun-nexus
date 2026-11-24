@@ -1,7 +1,7 @@
 # Provider adapters
 
-T18 adds an unwired compute contract for T19. `internal/providers` has no store
-or adapter imports. `Resource` mirrors the T17 columns; relations use the same
+T18 defines the compute contract; T19 uses it for scheduled and manual compute
+sync. `internal/providers` has no store or adapter imports. `Resource` mirrors the T17 columns; relations use the same
 `Reference{Service, Region, Kind, ProviderID}` shape as the T17 store for both
 ends, within the collection's account scope. Persistence resolves references
 to database IDs and assigns `ID`, `Version`, `CreatedAt`, and `UpdatedAt`.
@@ -9,15 +9,14 @@ Adapters set account/workspace identity and one UTC `SeenAt` per successful list
 
 Each provider package exports `New(ClientFactory)`. The factory receives an
 account identity (and region for AWS/Alibaba) and returns the existing cloud
-client. The future caller resolves encrypted credentials and must bind the
-client to that account. No credential loading, authorization, database writes,
+client. The worker resolves encrypted credentials and binds the client to that
+account. No credential loading, authorization, database writes,
 or runtime registration happens here. Construct the adapters explicitly, then
 pass a name-to-adapter map to `providers.NewRegistry` and use `Lookup`.
 
 All adapters advertise `compute`, kind `instance`, with a five-minute default
-interval. Existing scheduler configuration remains authoritative when T19 wires
-the adapters in. AWS and Alibaba require a concrete `List` region. Azure and
-GCP enumerate the subscription/project; an empty region or `*` returns all
+interval. Existing scheduler configuration remains authoritative. AWS and Alibaba
+require a concrete `List` region. Azure and GCP enumerate the subscription/project; an empty region or `*` returns all
 regions, and a concrete region filters the completed inventory. `Account.Region`
 selects the scope for `Get`. `Get` currently scans the same complete inventory
 and returns the inventory representation or `ErrNotFound`; it does not fetch
@@ -37,8 +36,35 @@ expanded details. This can be expensive for large accounts.
 Compute returns no relations. `List` returns no partial results after any page
 error or cancellation. The wrapped collectors retain their existing behavior,
 including SDK retries and Alibaba's context checks between pages (its SDK call
-currently has no request context). No `Apply`, non-compute kinds, sync, queue,
-retention, HTTP, or persistence changes are included.
+currently has no request context). The adapter packages handle no persistence,
+queue, retention, or HTTP work and expose no `Apply` or non-compute kinds.
+
+## Compute sync integration
+
+`app.NewCollector` builds the registry once at worker startup with factories
+wrapping the existing AWS, Alibaba, Azure and GCP client helpers. Credential
+lookup remains scoped to workspace/account/provider and uses the encrypted
+vault. The compute collector uses registry lookup, with no provider switch.
+
+The scheduled handler carries its job attempt into `sync.ReconcileInventory`.
+That transaction locks the account and checks the current lease, maps provider
+resources to JSON-backed catalog items, preserves the existing `instances`
+upsert/delete, calls `resources.Reconcile`, checks the lease again, then commits.
+Any collection error, cancellation, catalog error or stale lease leaves both
+inventories untouched. The legacy table remains the source for existing compute
+pages; the resource catalog also receives the data. No read route changes are
+part of T19, and no backfill runs at startup: each scope populates on its next
+scheduled or manual sync.
+
+AWS/Alibaba reconcile one region per job. Azure/GCP use an account-wide `*` job
+but return each instance's real region. The existing configured-region filter
+is applied before writing either table. Under the same account lock and lease,
+`resources.ReconcileAllRegions` unions returned regions with previously stored
+regions for this workspace/account/service/kind, then invokes `Reconcile` for
+each real region. A formerly populated region absent from a complete result is
+reconciled empty; a completely empty result clears all compute-instance regions.
+Other accounts, workspaces, services and kinds are preserved. Partial or failed
+results never reach reconciliation.
 
 ## Offline fixtures
 

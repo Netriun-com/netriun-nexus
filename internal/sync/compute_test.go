@@ -12,8 +12,8 @@ import (
 
 	"github.com/alibabacloud-go/tea/dara"
 	"github.com/jackc/pgx/v5"
-	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/jobs"
+	"github.com/netriun/nexus/internal/providers"
 	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
@@ -156,7 +156,7 @@ func TestSlowAccountDoesNotBlockAnother(t *testing.T) {
 }
 
 func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
-	s, _, account := setup(t)
+	s, workspace, account := setup(t)
 	addState(t, s, account)
 	old := queued(t, s)
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
@@ -164,7 +164,7 @@ func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
 		done <- s.Handler(func(ctx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
 			close(started)
 			<-release
-			return false, s.ReconcileInventory(ctx, account, []cloud.Instance{{ID: "stale", Region: p.Region}}, false, p.Region)
+			return false, s.ReconcileInventory(ctx, account, []providers.Resource{computeResource(workspace, account, "aws", p.Region, "stale")}, nil, false, p.Region)
 		})(t.Context(), *old)
 	}()
 	<-started
@@ -183,7 +183,7 @@ func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.Handler(func(ctx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
-		return false, s.ReconcileInventory(ctx, account, []cloud.Instance{{ID: "fresh", Region: p.Region}}, false, p.Region)
+		return false, s.ReconcileInventory(ctx, account, []providers.Resource{computeResource(workspace, account, "aws", p.Region, "fresh")}, nil, false, p.Region)
 	})(t.Context(), *current); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +194,9 @@ func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
 	var id string
 	if err := s.DB.QueryRow(t.Context(), `SELECT instance_id FROM instances WHERE account_id=$1`, account).Scan(&id); err != nil || id != "fresh" {
 		t.Fatalf("new inventory overwritten: %s %v", id, err)
+	}
+	if err := s.DB.QueryRow(t.Context(), `SELECT provider_id FROM resources WHERE workspace_id=$1 AND account_id=$2 AND service='compute' AND kind='instance'`, workspace, account).Scan(&id); err != nil || id != "fresh" {
+		t.Fatalf("new resources overwritten: %s %v", id, err)
 	}
 }
 

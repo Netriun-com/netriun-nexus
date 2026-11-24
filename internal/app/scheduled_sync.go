@@ -23,7 +23,12 @@ func NewCollector(ctx context.Context, db *pgxpool.Pool, config syncer.Config) (
 	if err != nil {
 		return nil, err
 	}
-	return &App{DB: db, Vault: vault, Sync: syncer.New(db, config)}, nil
+	a := &App{DB: db, Vault: vault, Sync: syncer.New(db, config)}
+	a.Providers, err = a.newProviderRegistry()
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 
 // DiscoverSyncRegions uses existing region APIs only for an all-regions account.

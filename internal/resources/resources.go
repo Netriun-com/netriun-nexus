@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package resources owns the resource catalog, read by the resources API; no
-// runtime writer uses it yet. Reconcile accepts a caller-owned pgx.Tx and a complete,
-// successful collection of one Scope. Callers must fence that transaction with
+// Package resources owns the resource catalog, read by the resources API;
+// compute sync dual-writes it alongside instances. Reconcile accepts a
+// caller-owned pgx.Tx and a complete, successful collection of one Scope. Callers must fence that transaction with
 // their job lease before/after reconciliation and roll it back on any failure.
 // A failed provider collection must never be passed as an empty successful one.
 //

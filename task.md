@@ -381,6 +381,8 @@ passes without network access.
 
 ### T19. Compute sync writes `resources`
 
+- [x] Implemented — registry-backed compute collection dual-writes instances and resources in one lease-fenced transaction; PostgreSQL tests cover recorded responses, rollback, and account-wide region cleanup.
+
 Work:
 
 1. The `compute` sync handler collects through the T18 adapter and, in the same

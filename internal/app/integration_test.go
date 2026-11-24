@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/jobs"
+	"github.com/netriun/nexus/internal/providers"
 	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
@@ -239,9 +239,9 @@ func TestIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	batchItems := []cloud.Instance{
-		{ID: fmt.Sprint("i-", account1), Name: "Batch updated", Region: "us-east-1", State: "running", Type: "t3.micro", Details: map[string]any{"batch": true}},
-		{ID: "i-batch-second", Name: "Batch second", Region: "us-east-1", State: "stopped", Type: "t3.nano", Details: map[string]any{"batch": true}},
+	batchItems := []providers.Resource{
+		{WorkspaceID: workspaceID, AccountID: account1, Provider: "aws", Service: "compute", Kind: "instance", ProviderID: fmt.Sprint("i-", account1), Name: "Batch updated", Region: "us-east-1", State: "running", Summary: map[string]any{"instance_type": "t3.micro"}, Details: map[string]any{"batch": true}},
+		{WorkspaceID: workspaceID, AccountID: account1, Provider: "aws", Service: "compute", Kind: "instance", ProviderID: "i-batch-second", Name: "Batch second", Region: "us-east-1", State: "stopped", Summary: map[string]any{"instance_type": "t3.nano"}, Details: map[string]any{"batch": true}},
 	}
 	if _, err = a.Sync.RefreshCompute(ctx, workspaceID, []int64{account1}, "us-east-1"); err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("batch claim: %v", err)
 	}
 	if err = a.Sync.Handler(func(run context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
-		return false, a.Sync.ReconcileInventory(run, account1, batchItems, false, "us-east-1")
+		return false, a.Sync.ReconcileInventory(run, account1, batchItems, nil, false, "us-east-1")
 	})(ctx, *batchJob); err != nil {
 		t.Fatalf("batch inventory reconciliation failed: %v", err)
 	}
