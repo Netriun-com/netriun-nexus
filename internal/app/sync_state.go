@@ -12,7 +12,7 @@ func (a *App) syncState(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	service := strings.TrimSpace(r.URL.Query().Get("service"))
 	switch service {
-	case "", syncer.Compute, syncer.Desktops, syncer.Users, syncer.Buckets, syncer.SecurityGroups:
+	case "", syncer.Compute, syncer.Network, syncer.Desktops, syncer.Users, syncer.Buckets, syncer.SecurityGroups:
 	default:
 		problem(w, 400, "Invalid sync service")
 		return

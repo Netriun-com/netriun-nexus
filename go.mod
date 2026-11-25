@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.46.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.329.0
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.62.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/crewjam/saml v0.5.1
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467

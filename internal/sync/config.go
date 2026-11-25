@@ -12,6 +12,7 @@ import (
 
 const (
 	Compute        = "compute"
+	Network        = "network"
 	Desktops       = "eds.desktops"
 	Users          = "eds.users"
 	Buckets        = "oss.buckets"
@@ -20,13 +21,13 @@ const (
 )
 
 type Config struct {
-	Compute, Desktops, Users, SecurityGroups, Buckets, Empty time.Duration
-	Tick, Reconcile, Discovery, Retention                    time.Duration
-	AuditRetentionInterval                                   time.Duration
+	Compute, Network, Desktops, Users, SecurityGroups, Buckets, Empty time.Duration
+	Tick, Reconcile, Discovery, Retention                             time.Duration
+	AuditRetentionInterval                                            time.Duration
 }
 
 func DefaultConfig() Config {
-	return Config{Compute: 5 * time.Minute, Desktops: 5 * time.Minute, Users: 5 * time.Minute,
+	return Config{Compute: 5 * time.Minute, Network: 15 * time.Minute, Desktops: 5 * time.Minute, Users: 5 * time.Minute,
 		SecurityGroups: 15 * time.Minute, Buckets: time.Hour, Empty: 6 * time.Hour,
 		Tick: 10 * time.Second, Reconcile: time.Minute, Discovery: time.Hour, Retention: 7 * 24 * time.Hour,
 		AuditRetentionInterval: 24 * time.Hour}
@@ -35,6 +36,7 @@ func DefaultConfig() Config {
 func LoadConfig() (Config, error) {
 	c := DefaultConfig()
 	for name, target := range map[string]*time.Duration{
+		"NEXUS_SYNC_NETWORK_INTERVAL": &c.Network,
 		"NEXUS_SYNC_COMPUTE_INTERVAL": &c.Compute, "NEXUS_SYNC_DESKTOPS_INTERVAL": &c.Desktops,
 		"NEXUS_SYNC_USERS_INTERVAL": &c.Users, "NEXUS_SYNC_SECURITY_GROUPS_INTERVAL": &c.SecurityGroups,
 		"NEXUS_SYNC_BUCKETS_INTERVAL": &c.Buckets, "NEXUS_SYNC_EMPTY_INTERVAL": &c.Empty,
@@ -61,6 +63,8 @@ func (c Config) Interval(service string, empty bool) time.Duration {
 	switch service {
 	case Compute:
 		return c.Compute
+	case Network:
+		return c.Network
 	case Desktops:
 		return c.Desktops
 	case Users:

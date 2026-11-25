@@ -56,6 +56,7 @@ func (a *App) DiscoverSyncRegions(ctx context.Context, account syncer.Account) m
 		}
 		if err == nil && len(regions) > 0 {
 			found[syncer.Compute] = regions
+			found[syncer.Network] = regions
 			found[syncer.SecurityGroups] = regions
 		} else {
 			slog.Warn("compute region discovery failed", "account_id", account.ID)
@@ -100,6 +101,8 @@ func (a *App) CollectScheduled(ctx context.Context, p syncer.Payload, account sy
 		} else {
 			err = a.collectRegion(ctx, p.WorkspaceID, p.AccountID, account.Provider, p.Region)
 		}
+	case syncer.Network:
+		err = a.collectNetwork(ctx, p, account)
 	case syncer.Desktops:
 		err = a.collectEDSDesktops(ctx, p.WorkspaceID, p.AccountID, p.Region)
 	case syncer.Users:

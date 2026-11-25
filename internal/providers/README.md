@@ -1,5 +1,8 @@
 # Provider adapters
 
+T22 adds the [regional AWS/Alibaba network service](NETWORK.md), including its
+read-only API references, permissions and relation ownership rules.
+
 T18 defines the compute contract; T19 uses it for scheduled and manual compute
 sync. `internal/providers` has no store or adapter imports. `Resource` mirrors the T17 columns; relations use the same
 `Reference{Service, Region, Kind, ProviderID}` shape as the T17 store for both
@@ -37,7 +40,8 @@ Compute returns no relations. `List` returns no partial results after any page
 error or cancellation. The wrapped collectors retain their existing behavior,
 including SDK retries and Alibaba's context checks between pages (its SDK call
 currently has no request context). The adapter packages handle no persistence,
-queue, retention, or HTTP work and expose no `Apply` or non-compute kinds.
+queue, retention, or HTTP work and expose no `Apply`; the network wrapper
+supplies the T22 kinds.
 
 ## Compute sync integration
 

@@ -11,6 +11,7 @@ metadata:
   labels:
     {{- include "netriun-nexus.labels" . | nindent 4 }}
 data:
+  NEXUS_SYNC_NETWORK_INTERVAL: {{ printf "%ds" (int .Values.sync.networkIntervalSeconds) | quote }}
   NEXUS_SYNC_COMPUTE_INTERVAL: {{ printf "%ds" (int .Values.sync.computeIntervalSeconds) | quote }}
   NEXUS_SYNC_DESKTOPS_INTERVAL: {{ printf "%ds" (int .Values.sync.desktopsIntervalSeconds) | quote }}
   NEXUS_SYNC_USERS_INTERVAL: {{ printf "%ds" (int .Values.sync.usersIntervalSeconds) | quote }}

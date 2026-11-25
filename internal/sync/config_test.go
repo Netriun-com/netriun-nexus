@@ -10,7 +10,7 @@ import (
 )
 
 func TestSyncConfiguration(t *testing.T) {
-	for _, name := range []string{"NEXUS_SYNC_COMPUTE_INTERVAL", "NEXUS_SYNC_DESKTOPS_INTERVAL", "NEXUS_SYNC_USERS_INTERVAL", "NEXUS_SYNC_SECURITY_GROUPS_INTERVAL", "NEXUS_SYNC_BUCKETS_INTERVAL", "NEXUS_SYNC_EMPTY_INTERVAL", "NEXUS_SYNC_TICK_INTERVAL", "NEXUS_SYNC_RECONCILE_INTERVAL", "NEXUS_JOB_RETENTION", "NEXUS_SYNC_DISCOVERY_INTERVAL", "NEXUS_AUDIT_RETENTION_INTERVAL"} {
+	for _, name := range []string{"NEXUS_SYNC_NETWORK_INTERVAL", "NEXUS_SYNC_COMPUTE_INTERVAL", "NEXUS_SYNC_DESKTOPS_INTERVAL", "NEXUS_SYNC_USERS_INTERVAL", "NEXUS_SYNC_SECURITY_GROUPS_INTERVAL", "NEXUS_SYNC_BUCKETS_INTERVAL", "NEXUS_SYNC_EMPTY_INTERVAL", "NEXUS_SYNC_TICK_INTERVAL", "NEXUS_SYNC_RECONCILE_INTERVAL", "NEXUS_JOB_RETENTION", "NEXUS_SYNC_DISCOVERY_INTERVAL", "NEXUS_AUDIT_RETENTION_INTERVAL"} {
 		t.Setenv(name, "")
 	}
 	c, err := syncer.LoadConfig()
@@ -18,10 +18,11 @@ func TestSyncConfiguration(t *testing.T) {
 		t.Fatalf("defaults: %+v %v", c, err)
 	}
 	t.Setenv("NEXUS_SYNC_COMPUTE_INTERVAL", "2m")
+	t.Setenv("NEXUS_SYNC_NETWORK_INTERVAL", "22m")
 	t.Setenv("NEXUS_JOB_RETENTION", "24h")
 	t.Setenv("NEXUS_AUDIT_RETENTION_INTERVAL", "12h")
 	c, err = syncer.LoadConfig()
-	if err != nil || c.Compute != 2*time.Minute || c.Retention != 24*time.Hour || c.AuditRetentionInterval != 12*time.Hour {
+	if err != nil || c.Compute != 2*time.Minute || c.Network != 22*time.Minute || c.Retention != 24*time.Hour || c.AuditRetentionInterval != 12*time.Hour {
 		t.Fatalf("overrides: %+v %v", c, err)
 	}
 	for _, bad := range []string{"0s", "-1m", "500ms", "seven days"} {

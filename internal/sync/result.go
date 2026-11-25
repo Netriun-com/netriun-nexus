@@ -11,6 +11,11 @@ import (
 // Result checks the snapshot produced by an existing collector. Partial results
 // never mark a scope successful or empty. No provider response is persisted as an error.
 func (s *Store) Result(ctx context.Context, p Payload, snapshotRegion string) (bool, error) {
+	if p.Service == Network {
+		var empty bool
+		err := s.DB.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM resources WHERE workspace_id=$1 AND account_id=$2 AND service='network' AND region=$3)`, p.WorkspaceID, p.AccountID, p.Region).Scan(&empty)
+		return empty, err
+	}
 	if p.Service == Compute {
 		var empty bool
 		err := s.DB.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM instances i JOIN cloud_accounts a ON a.id=i.account_id

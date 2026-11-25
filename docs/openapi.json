@@ -2113,7 +2113,8 @@
                 "eds.desktops",
                 "eds.users",
                 "oss.buckets",
-                "ecs.security_groups"
+                "ecs.security_groups",
+                "network"
               ]
             }
           }
@@ -2447,7 +2448,8 @@
               "eds.desktops",
               "eds.users",
               "oss.buckets",
-              "ecs.security_groups"
+              "ecs.security_groups",
+              "network"
             ]
           },
           "region": {
