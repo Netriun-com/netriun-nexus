@@ -442,7 +442,9 @@ func TestWorkerRecoveryAndShutdown(t *testing.T) {
 					t.Fatalf("unfinished lease not preserved: %s %d", state, n)
 				}
 			}
-			replacement := startProcess(t, dsn, "worker", "1s")
+			// Only the original worker needs a short lease to exercise recovery.
+			// A delayed replacement renewal must not create an unrelated retry.
+			replacement := startProcess(t, dsn, "worker", "1s", "NEXUS_TEST_LEASE="+worker.DefaultConfig().Lease.String())
 			waitJob(t, db, j.ID, "succeeded")
 			waitJob(t, db, next.ID, "succeeded")
 			if scenario != "drained" {
