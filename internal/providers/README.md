@@ -1,13 +1,15 @@
 # Provider adapters
 
 T18 defines the compute contract; T19 uses it for scheduled and manual compute
-sync. `internal/providers` has no store or adapter imports. `Resource` mirrors the T17 columns; relations use the same
+sync. T20 adds Alibaba desktops, directory users, buckets and security groups. `internal/providers` has no store or adapter imports. `Resource` mirrors the T17 columns; relations use the same
 `Reference{Service, Region, Kind, ProviderID}` shape as the T17 store for both
 ends, within the collection's account scope. Persistence resolves references
 to database IDs and assigns `ID`, `Version`, `CreatedAt`, and `UpdatedAt`.
 Adapters set account/workspace identity and one UTC `SeenAt` per successful list.
 
-Each provider package exports `New(ClientFactory)`. The factory receives an
+Each provider package exports `New(ClientFactory)` for compute. Alibaba also
+exports `NewWithServices(ECSFactory, EDSFactory, OSSFactory)`, used by the worker,
+to include all five services. The factory receives an
 account identity (and region for AWS/Alibaba) and returns the existing cloud
 client. The worker resolves encrypted credentials and binds the client to that
 account. No credential loading, authorization, database writes,
@@ -37,7 +39,7 @@ Compute returns no relations. `List` returns no partial results after any page
 error or cancellation. The wrapped collectors retain their existing behavior,
 including SDK retries and Alibaba's context checks between pages (its SDK call
 currently has no request context). The adapter packages handle no persistence,
-queue, retention, or HTTP work and expose no `Apply` or non-compute kinds.
+queue, retention, or HTTP work and expose no `Apply`.
 
 ## Compute sync integration
 
@@ -66,6 +68,52 @@ reconciled empty; a completely empty result clears all compute-instance regions.
 Other accounts, workspaces, services and kinds are preserved. Partial or failed
 results never reach reconciliation.
 
+## Alibaba service sync integration
+
+The worker's Alibaba adapter wraps the existing `internal/cloud` functions. It
+preserves their page sizes and pagination and rejects the complete result on any
+list/detail/stat error or cancellation. It collects EDS users alone; no desktop
+refresh is a side effect. The scheduler's current interval settings stay
+unchanged; advertised defaults are 5 minutes for desktops/users, 15 minutes for
+security groups, and 60 minutes for buckets.
+
+| Service | Kind | Resource region | Identity and mapping |
+| --- | --- | --- | --- |
+| `eds.desktops` | `desktop` | Requested region | `DesktopId`, `DesktopName`, lowercase `DesktopStatus`; desktop type, office site and charge type in summary; existing tags preserved |
+| `eds.users` | `directory_user` | Directory endpoint region | `EndUserId`; real nickname or username; status 0 = normal, 9 = locked, other numeric values kept as text; email in summary |
+| `oss.buckets` | `bucket` | Each bucket's location with the `oss-` prefix removed | Bucket name; available after info and stats succeed; storage class, storage bytes, object count and ACL in summary |
+| `ecs.security_groups` | `security_group` | Requested region | Security group ID and name; available after all rules succeed; VPC, type and counts in summary; rules only in details |
+
+EDS users map mainland desktop regions to `cn-shanghai` and other regions to
+`ap-southeast-1` through the existing `cloud.EDSUserRegion` function. OSS `List`
+requires `*` or an empty scope and enumerates the whole account; the factory uses
+the account's first configured region (or `cn-hangzhou`) for that enumeration.
+Bucket info and stats use each bucket's regional client. Configured regions do
+not filter out buckets. `Get` scans the complete service inventory, using
+`Account.Region` for regional services; no HTTP read route invokes it.
+
+Each service resource's `details` is the exact existing collected item, including
+EDS SDK field names, bucket statistics, and security-group rules. JSON numbers
+retain int64 precision. The other three collectors do not return tags, so their
+catalog tags are empty; this task adds no tag API calls or topology relations.
+
+`app.collectService` calls the registry once per job and passes the complete
+result to `sync.SaveServiceSnapshot`. That transaction locks the account, checks
+the job lease and enabled sync-state generation, derives the legacy snapshot
+from resource details, writes it, reconciles the catalog and checks the lease
+again before commit. It retains `data`, `failed_regions` and `failed_buckets`
+shapes. No separate transaction or best-effort second write is used. OSS uses
+`resources.ReconcileAllRegions` to clear disappeared regions after a complete
+successful account-wide collection. A failed bucket keeps the entire prior
+snapshot and catalog; failed desktop/security-group regions keep their rows.
+
+The previous fan-out limits remain: six concurrent bucket info/stat tasks and
+eight security-group rule tasks per collection. Each rule task now obtains an
+independent ECS client because the SDK mutates RPC headers during reads; sharing
+one client across concurrent requests races. Factories must return independent
+clients for concurrent detail tasks. Credentials remain in the worker's existing
+workspace/account-scoped encrypted-vault lookup, outside the adapters.
+
 ## Offline fixtures
 
 Each adapter's `testdata` contains synthetic recorded-response fixtures shaped
@@ -75,11 +123,19 @@ signs with an ephemeral test key; no real credentials are used. Unexpected
 requests fail closed. Azure/GCP tests temporarily replace the default transport
 and therefore intentionally do not run in parallel within their package.
 
-The shared parity test independently replays the same two pages through the
+The shared compute parity test independently replays the same two pages through the
 adapter and today's `internal/cloud` inventory function, compares all instance
 fields/details, and checks pagination tokens. It also covers empty inventory,
 a second-page access error (no partial results), Get, region filtering, account
 identity validation, cancellation, and factory failures.
+
+Alibaba service fixtures in `alibaba/alibabatest/fixtures` are shared by adapter
+and PostgreSQL scheduled-handler tests. They cover two list pages per service,
+two rule pages per security group, bucket info/stats in two regions, continuation
+errors, detail errors, cancellation and empty results. Unexpected requests fail
+closed. PostgreSQL tests compare exact snapshot objects with catalog details,
+exercise retries without version changes, and reject stale leases, including a
+lease expiring after the snapshot write but before commit.
 
 ```sh
 GOPROXY=off GOSUMDB=off go test -race ./internal/providers/...
@@ -97,3 +153,12 @@ These are the calls reused by the existing collectors:
 
 Client construction uses the existing [Microsoft client credentials flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
 and [Google service account OAuth flow](https://developers.google.com/identity/protocols/oauth2/service-account).
+
+Alibaba service calls reused by T20 (no new permissions):
+
+- [EDS DescribeDesktops](https://www.alibabacloud.com/help/en/wuying-workspace/developer-reference/api-ecd-2020-09-30-describedesktops): regional pages using `NextToken`.
+- [EDS DescribeUsers](https://www.alibabacloud.com/help/en/wuying-workspace/developer-reference/api-eds-user-2021-03-08-describeusers-desktop) and [directory endpoints](https://www.alibabacloud.com/help/en/wuying-workspace/developer-reference/api-eds-user-2021-03-08-endpoint-desktop): token pagination and the Shanghai/Singapore directory regions.
+- [OSS ListBuckets](https://www.alibabacloud.com/help/en/oss/developer-reference/listbuckets): account-wide enumeration with `Marker`/`NextMarker`.
+- [OSS GetBucketInfo](https://www.alibabacloud.com/help/en/oss/developer-reference/getbucketinfo): per-bucket location and configuration.
+- [OSS GetBucketStat](https://www.alibabacloud.com/help/en/oss/developer-reference/getbucketstat): storage/object counters; the provider notes that stats may lag by over an hour.
+- [ECS DescribeSecurityGroups](https://www.alibabacloud.com/help/en/ecs/developer-reference/api-ecs-2014-05-26-describesecuritygroups) and [DescribeSecurityGroupAttribute](https://www.alibabacloud.com/help/en/ecs/developer-reference/api-ecs-2014-05-26-describesecuritygroupattribute): regional groups and paginated rules in both directions.

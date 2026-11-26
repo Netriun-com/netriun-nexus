@@ -1,0 +1,12 @@
+{
+  "Desktops": [
+    {
+      "DesktopId": "ecd-two",
+      "DesktopName": "Finance",
+      "DesktopStatus": "Stopped",
+      "DesktopType": "ecd.basic.small",
+      "OfficeSiteId": "dir-main"
+    }
+  ],
+  "RequestId": "fixture"
+}

@@ -11,19 +11,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/jobs"
+	"github.com/netriun/nexus/internal/providers"
+	"github.com/netriun/nexus/internal/resources"
 )
 
-// SaveServiceSnapshot commits a complete scope only while this job still owns
-// its lease and the enabled sync_state generation. Provider failures must return
-// before calling it, preserving the previous snapshot for that scope.
-func (s *Store) SaveServiceSnapshot(ctx context.Context, workspace, account int64, service, region string, payload any) error {
+// SaveServiceSnapshot commits the legacy snapshot and resource catalog together,
+// only while this job owns its lease and the enabled sync_state generation.
+// Provider failures must return before calling it, preserving both tables.
+func (s *Store) SaveServiceSnapshot(ctx context.Context, workspace, account int64, service, region string, items []providers.Resource, relations []providers.Relation) error {
 	a, ok := ctx.Value(attemptKey{}).(attempt)
 	if !ok || a.Payload.WorkspaceID != workspace || a.Payload.AccountID != account || a.Payload.Service != service || a.Payload.Region != region {
 		return jobs.ErrLeaseLost
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
 	}
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
@@ -31,7 +29,8 @@ func (s *Store) SaveServiceSnapshot(ctx context.Context, workspace, account int6
 	}
 	defer tx.Rollback(context.Background())
 	var id int64
-	if err := tx.QueryRow(ctx, "SELECT id FROM cloud_accounts WHERE id=$1 AND workspace_id=$2 FOR UPDATE", account, workspace).Scan(&id); err != nil {
+	var provider string
+	if err := tx.QueryRow(ctx, "SELECT provider FROM cloud_accounts WHERE id=$1 AND workspace_id=$2 FOR UPDATE", account, workspace).Scan(&provider); err != nil {
 		return err
 	}
 	if err := jobs.CheckLeaseTx(ctx, tx, a.Job); err != nil {
@@ -41,8 +40,20 @@ func (s *Store) SaveServiceSnapshot(ctx context.Context, workspace, account int6
  AND enabled AND last_job_id=$5 AND last_attempt=$6 FOR UPDATE`, a.Payload.StateID, account, service, region, a.Job.ID, a.Job.Attempts).Scan(&id); err != nil {
 		return err
 	}
+	scope, catalog, edges, raw, err := serviceCatalog(workspace, account, provider, service, region, items, relations)
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload) VALUES($1,$2,$3,$4,$5)
  ON CONFLICT(account_id,service_key,region) DO UPDATE SET payload=excluded.payload,fetched_at=clock_timestamp()`, workspace, account, service, region, raw)
+	if err != nil {
+		return err
+	}
+	if service == Buckets {
+		err = resources.ReconcileAllRegions(ctx, tx, scope, catalog, edges)
+	} else {
+		err = resources.Reconcile(ctx, tx, scope, catalog[region], edges[region])
+	}
 	if err != nil {
 		return err
 	}

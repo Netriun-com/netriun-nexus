@@ -1,0 +1,1 @@
+<ListAllMyBucketsResult><IsTruncated>true</IsTruncated><NextMarker>page-two</NextMarker><Buckets><Bucket><Name>fixture-one</Name><Location>oss-cn-hangzhou</Location><CreationDate>2026-01-01T00:00:00.000Z</CreationDate><StorageClass>Standard</StorageClass></Bucket></Buckets></ListAllMyBucketsResult>

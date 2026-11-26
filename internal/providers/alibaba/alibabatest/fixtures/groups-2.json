@@ -1,0 +1,14 @@
+{
+  "SecurityGroups": {
+    "SecurityGroup": [
+      {
+        "SecurityGroupId": "sg-two",
+        "SecurityGroupName": "Finance",
+        "VpcId": "vpc-main",
+        "SecurityGroupType": "enterprise",
+        "RuleCount": 2
+      }
+    ]
+  },
+  "RequestId": "fixture"
+}

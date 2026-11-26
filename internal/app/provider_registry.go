@@ -6,6 +6,7 @@ import (
 	"context"
 
 	ecs "github.com/alibabacloud-go/ecs-20140526/v7/client"
+	oss "github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/providers"
@@ -24,8 +25,26 @@ func (a *App) newProviderRegistry() (*providers.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	alibabaAdapter, err := alibaba.New(func(ctx context.Context, account providers.Account, region string) (*ecs.Client, error) {
+	alibabaAdapter, err := alibaba.NewWithServices(func(ctx context.Context, account providers.Account, region string) (*ecs.Client, error) {
 		return a.alibabaClient(ctx, account.WorkspaceID, account.ID, region)
+	}, func(ctx context.Context, account providers.Account, region string) (*cloud.EDSClients, error) {
+		credentials, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
+		if err != nil {
+			return nil, err
+		}
+		return cloud.EDSClient(region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
+	}, func(ctx context.Context, account providers.Account, region string) (*oss.Client, error) {
+		credentials, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
+		if err != nil {
+			return nil, err
+		}
+		if region == "*" {
+			// Preserve the existing account-selected endpoint for ListBuckets.
+			if err := a.DB.QueryRow(ctx, `SELECT COALESCE(NULLIF(regions[1],''),'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, account.ID, account.WorkspaceID).Scan(&region); err != nil {
+				return nil, err
+			}
+		}
+		return cloud.OSSClient(region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken), nil
 	})
 	if err != nil {
 		return nil, err

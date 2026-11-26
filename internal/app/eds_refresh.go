@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/netriun/nexus/internal/cloud"
 )
 
 type edsRegionCount struct {
@@ -76,33 +74,9 @@ func (a *App) edsCredentials(ctx context.Context, workspaceID, accountID int64) 
 }
 
 func (a *App) collectEDSDesktops(ctx context.Context, workspaceID, accountID int64, target string) error {
-	credentials, _, err := a.edsCredentials(ctx, workspaceID, accountID)
-	if err != nil {
-		return err
-	}
-	client, err := cloud.EDSClient(target, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-	if err != nil {
-		return err
-	}
-	items, err := cloud.EDSDesktops(ctx, client.Desktop, target)
-	if err != nil {
-		return err
-	}
-	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, "eds.desktops", target, map[string]any{"data": items, "failed_regions": []string{}})
+	return a.collectService(ctx, workspaceID, accountID, "eds.desktops", target)
 }
 
 func (a *App) collectEDSUsers(ctx context.Context, workspaceID, accountID int64, region string) error {
-	credentials, _, err := a.edsCredentials(ctx, workspaceID, accountID)
-	if err != nil {
-		return err
-	}
-	client, err := cloud.EDSClient(region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-	if err != nil {
-		return err
-	}
-	items, err := cloud.EDSUsers(ctx, client.User)
-	if err != nil {
-		return err
-	}
-	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, "eds.users", region, map[string]any{"data": items})
+	return a.collectService(ctx, workspaceID, accountID, "eds.users", region)
 }
