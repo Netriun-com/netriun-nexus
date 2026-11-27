@@ -13,8 +13,16 @@ import (
 )
 
 const (
-	Compute  = "compute"
-	Instance = "instance"
+	Compute        = "compute"
+	Instance       = "instance"
+	EDSDesktops    = "eds.desktops"
+	EDSUsers       = "eds.users"
+	OSSBuckets     = "oss.buckets"
+	SecurityGroups = "ecs.security_groups"
+	Desktop        = "desktop"
+	DirectoryUser  = "directory_user"
+	Bucket         = "bucket"
+	SecurityGroup  = "security_group"
 )
 
 var (

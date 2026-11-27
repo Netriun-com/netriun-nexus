@@ -1,0 +1,16 @@
+{
+  "Permissions": {
+    "Permission": [
+      {
+        "SecurityGroupRuleId": "sgr-two",
+        "Direction": "egress",
+        "IpProtocol": "tcp",
+        "PortRange": "443/443",
+        "DestCidrIp": "198.51.100.0/24",
+        "Policy": "accept",
+        "Priority": "2"
+      }
+    ]
+  },
+  "RequestId": "fixture"
+}

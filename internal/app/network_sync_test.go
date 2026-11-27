@@ -162,3 +162,33 @@ func TestNetworkFullSyncRelations(t *testing.T) {
 		})
 	}
 }
+
+// The worker must compose T20's service adapter with T22's network wrapper.
+// Constructing the registry advertises all services without resolving credentials.
+func TestWorkerProviderRegistryServicesAndNetwork(t *testing.T) {
+	a := &App{}
+	registry, err := a.newProviderRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for provider, expected := range map[string][]string{
+		"aws":     {"compute", "network"},
+		"alibaba": {"compute", "eds.desktops", "eds.users", "oss.buckets", "ecs.security_groups", "network"},
+		"azure":   {"compute"},
+		"gcp":     {"compute"},
+	} {
+		adapter, err := registry.Lookup(provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := []string{}
+		for _, spec := range adapter.Services() {
+			actual = append(actual, spec.Name)
+		}
+		slices.Sort(actual)
+		slices.Sort(expected)
+		if !slices.Equal(actual, expected) {
+			t.Fatalf("%s services: got %v, want %v", provider, actual, expected)
+		}
+	}
+}

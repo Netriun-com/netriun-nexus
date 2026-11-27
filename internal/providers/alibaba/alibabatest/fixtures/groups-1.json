@@ -1,0 +1,16 @@
+{
+  "SecurityGroups": {
+    "SecurityGroup": [
+      {
+        "SecurityGroupId": "sg-one",
+        "SecurityGroupName": "Engineering",
+        "VpcId": "vpc-main",
+        "SecurityGroupType": "normal",
+        "RuleCount": 2,
+        "EcsCount": 3
+      }
+    ]
+  },
+  "NextToken": "page-two",
+  "RequestId": "fixture"
+}

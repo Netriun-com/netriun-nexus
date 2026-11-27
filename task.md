@@ -401,6 +401,8 @@ still pass.
 
 ### T20. EDS, OSS, and security groups write `resources`
 
+- [x] Implemented — Alibaba service adapters dual-write snapshots and resources in the same lease-fenced transaction, with recorded-response parity and PostgreSQL rollback tests.
+
 Work: same pattern as T19 for EDS desktops (kind `desktop`), EDS users (kind
 `directory_user`), OSS buckets (kind `bucket`, region from the bucket's own
 location), and security groups (kind `security_group`, with rules in

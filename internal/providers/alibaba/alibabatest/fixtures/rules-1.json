@@ -1,0 +1,17 @@
+{
+  "Permissions": {
+    "Permission": [
+      {
+        "SecurityGroupRuleId": "sgr-one",
+        "Direction": "ingress",
+        "IpProtocol": "tcp",
+        "PortRange": "443/443",
+        "SourceCidrIp": "192.0.2.0/24",
+        "Policy": "accept",
+        "Priority": "1"
+      }
+    ]
+  },
+  "NextToken": "page-two",
+  "RequestId": "fixture"
+}

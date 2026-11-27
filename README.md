@@ -134,8 +134,9 @@ software license.
 ## Go development
 
 The [provider adapter contract](internal/providers/README.md) defines the new
-compute resource mapping and offline fixture tests. Compute sync uses the
-registry and writes both the legacy instances table and resource catalog.
+compute and Alibaba service resource mappings and offline fixture tests. Sync
+uses the registry and writes both the legacy inventory/snapshots and resource
+catalog in the same lease-fenced transaction.
 
 Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Valkey in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default. The `REDIS_URL` name remains for protocol compatibility.
 
@@ -159,11 +160,20 @@ Integration tests run when `TEST_DATABASE_URL` and `TEST_REDIS_URL` are provided
 Migration `016_resources.sql` adds the `resources` and `resource_relations`
 tables and `internal/resources` store for phase 4. The authenticated
 `GET /api/v1/resources` and `GET /api/v1/resources/{id}` routes read this catalog.
-Compute sync now populates the catalog alongside the legacy `instances` table
-in one lease-fenced transaction. Existing compute pages continue reading
-`instances`; other services still write snapshots until their assigned tasks.
-Compute scopes populate on their next scheduled or manual sync, with no startup
-backfill. Failed or cancelled collections preserve both tables.
+Compute sync populates the catalog alongside `instances`. Alibaba EDS desktops,
+EDS directory users, OSS buckets, and ECS security groups also populate it
+alongside `service_snapshots`, in the same lease-fenced transaction. Existing
+pages continue reading the legacy tables. Scopes populate on their next
+scheduled or manual sync, with no startup backfill. Failed or cancelled
+collections preserve both representations.
+
+Desktops and security groups are regional; directory users use the directory
+endpoint region (`cn-shanghai` or `ap-southeast-1`). OSS still collects the whole
+account, but each catalog bucket uses its own location. A failed bucket info/stat
+request rejects the entire OSS collection. An empty successful collection clears
+only its scope, including previously populated bucket regions that disappeared.
+Security-group rules stay in resource `details`; the list returns summaries.
+See [the service mappings and provider references](internal/providers/README.md#alibaba-service-sync-integration).
 
 The migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`.
 The database server must provide the `pg_trgm` extension files. The migration
