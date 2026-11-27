@@ -273,7 +273,7 @@ func TestServiceRegionalUpgradePreservesHistory(t *testing.T) {
 		t.Fatalf("legacy scopes remain: %v", current)
 	}
 	snapshot, exists, err := s.ServiceSnapshot(t.Context(), workspace, account, syncer.SecurityGroups, "")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 2 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 2 {
 		t.Fatalf("aggregate lost old groups: %+v %v", snapshot, err)
 	}
 	if err := s.Reconcile(t.Context(), nil); err != nil {
@@ -284,7 +284,7 @@ func TestServiceRegionalUpgradePreservesHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, exists, err = s.ServiceSnapshot(t.Context(), workspace, account, syncer.SecurityGroups, "")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 2 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 2 {
 		t.Fatalf("disabled scope hid data: %+v %v", snapshot, err)
 	}
 	// Region edits preserve OSS identity and a directory shared by both CN regions.
@@ -369,7 +369,7 @@ func TestUpgradeUsesKnownRegionsBeforeNextDiscovery(t *testing.T) {
 	}
 	// Reads must preserve aggregate-only historical rows even before reconcile.
 	snapshot, exists, err := s.ServiceSnapshot(t.Context(), workspace, account, syncer.Desktops, "all")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 1 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 1 {
 		t.Fatalf("legacy data unavailable: %+v %v", snapshot, err)
 	}
 	if err := s.Reconcile(t.Context(), nil); err != nil {
@@ -379,4 +379,17 @@ func TestUpgradeUsesKnownRegionsBeforeNextDiscovery(t *testing.T) {
 	if got["eds.users:*"] != 0 || got["ecs.security_groups:*"] != 0 || got["eds.users:cn-shanghai"] == 0 || got["ecs.security_groups:cn-hangzhou"] == 0 {
 		t.Fatalf("known scopes not reused: %v", got)
 	}
+}
+
+func snapshotItemCount(t *testing.T, snapshot map[string]any) int {
+	t.Helper()
+	raw, err := json.Marshal(snapshot["data"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		t.Fatal(err)
+	}
+	return len(items)
 }

@@ -151,7 +151,7 @@ func TestEmptyCatalogScopeFreshness(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, found, err := s.ServiceSnapshot(t.Context(), scope.WorkspaceID, []int64{scope.AccountID}, "eds.desktops", "all")
-	if err != nil || !found || data["fetched_at"] == nil || len(data["data"].([]json.RawMessage)) != 0 {
+	if err != nil || !found || data["fetched_at"] == nil || string(data["data"].(json.RawMessage)) != "[]" {
 		t.Fatalf("successful empty scope: %v %v", data, err)
 	}
 	freshness, err := s.ServiceFreshness(t.Context(), scope.WorkspaceID, []int64{scope.AccountID})

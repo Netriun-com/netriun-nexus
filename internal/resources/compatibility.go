@@ -110,13 +110,14 @@ func (s *Store) ServiceSnapshot(ctx context.Context, workspace int64, accounts [
  SELECT st.account_id,st.region,st.last_error,st.last_success_at FROM sync_state st JOIN cloud_accounts a ON a.id=st.account_id AND a.workspace_id=$1 WHERE a.id=ANY($2) AND st.service=$3 AND ($6 OR st.region=$4) AND st.region<>'*'
  UNION ALL SELECT a.id,'*',st.last_error,st.last_success_at FROM cloud_accounts a JOIN sync_state st ON st.account_id=a.id AND st.service=$3 AND st.region='*' WHERE a.workspace_id=$1 AND a.id=ANY($2) AND $4='*'
  ), data AS (
- SELECT account_id,CASE WHEN $4='*' THEN '*' ELSE region END AS region,jsonb_agg(details ORDER BY name,id) AS items,min(seen_at) AS seen FROM resources r WHERE workspace_id=$1 AND account_id=ANY($2) AND service=$3 AND kind=$5 AND EXISTS(SELECT 1 FROM cloud_accounts a WHERE a.workspace_id=$1 AND a.id=r.account_id AND a.provider=r.provider) AND ($6 OR $4='*' OR region=$4) GROUP BY account_id,CASE WHEN $4='*' THEN '*' ELSE region END
- ) SELECT COALESCE(s.region,d.region),COALESCE(s.last_error,''),COALESCE(s.last_success_at,d.seen),COALESCE(d.items,'[]'::jsonb) FROM scopes s FULL JOIN data d ON d.account_id=s.account_id AND d.region=s.region ORDER BY 1`, workspace, accounts, service, region, kind, aggregate)
+ SELECT account_id,CASE WHEN $4='*' THEN '*' ELSE region END AS region,jsonb_agg(details ORDER BY name,id) FILTER(WHERE NOT $7::boolean) AS items,count(*) AS item_count,min(seen_at) AS seen FROM resources r WHERE workspace_id=$1 AND account_id=ANY($2) AND service=$3 AND kind=$5 AND EXISTS(SELECT 1 FROM cloud_accounts a WHERE a.workspace_id=$1 AND a.id=r.account_id AND a.provider=r.provider) AND ($6 OR $4='*' OR region=$4) GROUP BY account_id,CASE WHEN $4='*' THEN '*' ELSE region END
+ ) SELECT COALESCE(s.region,d.region),COALESCE(s.last_error,''),COALESCE(s.last_success_at,d.seen),COALESCE(d.items,'[]'::jsonb),COALESCE(d.item_count,0) FROM scopes s FULL JOIN data d ON d.account_id=s.account_id AND d.region=s.region ORDER BY 1`, workspace, accounts, service, region, kind, aggregate, original == "eds.regions")
 	if err != nil {
 		return nil, false, err
 	}
 	defer rows.Close()
-	data := []json.RawMessage{}
+	data := []byte{'['}
+	total := 0
 	failed := []string{}
 	regions := []map[string]any{}
 	var oldest *time.Time
@@ -125,14 +126,20 @@ func (s *Store) ServiceSnapshot(ctx context.Context, workspace int64, accounts [
 		var scope, message string
 		var fetched *time.Time
 		var raw []byte
-		if err := rows.Scan(&scope, &message, &fetched, &raw); err != nil {
+		var count int
+		if err := rows.Scan(&scope, &message, &fetched, &raw, &count); err != nil {
 			return nil, false, err
 		}
-		var items []json.RawMessage
-		if err := json.Unmarshal(raw, &items); err != nil {
-			return nil, false, err
+		// PostgreSQL supplies complete JSON arrays. Join their interiors without
+		// decoding and allocating every native resource again in Go. Counts are
+		// computed by SQL, including the count-only EDS regions projection.
+		if len(raw) > 2 {
+			if len(data) > 1 {
+				data = append(data, ',')
+			}
+			data = append(data, raw[1:len(raw)-1]...)
 		}
-		data = append(data, items...)
+		total += count
 		if message != "" {
 			failed = append(failed, scope)
 		}
@@ -144,7 +151,7 @@ func (s *Store) ServiceSnapshot(ctx context.Context, workspace int64, accounts [
 				oldest = fetched
 			}
 		}
-		regions = append(regions, map[string]any{"id": scope, "name": scope, "desktops": len(items), "available": fetched != nil && message == ""})
+		regions = append(regions, map[string]any{"id": scope, "name": scope, "desktops": count, "available": fetched != nil && message == ""})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, err
@@ -155,7 +162,8 @@ func (s *Store) ServiceSnapshot(ctx context.Context, workspace int64, accounts [
 	if !found {
 		return map[string]any{"data": []any{}, "snapshot": false, "fetched_at": nil}, false, nil
 	}
-	out := map[string]any{"data": data, "snapshot": found, "fetched_at": oldest}
+	data = append(data, ']')
+	out := map[string]any{"data": json.RawMessage(data), "snapshot": found, "fetched_at": oldest}
 	if service == "eds.desktops" || service == "ecs.security_groups" {
 		out["failed_regions"] = failed
 	}
@@ -163,7 +171,7 @@ func (s *Store) ServiceSnapshot(ctx context.Context, workspace int64, accounts [
 		out["failed_buckets"] = []string{}
 	}
 	if original == "eds.regions" {
-		out["data"], out["total_desktops"] = regions, len(data)
+		out["data"], out["total_desktops"] = regions, total
 	}
 	return out, found, nil
 }
