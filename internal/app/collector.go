@@ -47,3 +47,23 @@ func (a *App) collectCompute(ctx context.Context, workspaceID, accountID int64, 
 	}
 	return a.Sync.ReconcileInventory(ctx, accountID, items, relations, whole, region)
 }
+
+// collectService feeds both legacy snapshots and catalog rows from the same
+// complete adapter result. SaveServiceSnapshot owns the shared lease-fenced tx.
+func (a *App) collectService(ctx context.Context, workspaceID, accountID int64, service, region string) error {
+	if a.Providers == nil {
+		return errors.New("service provider registry is not initialized")
+	}
+	adapter, err := a.Providers.Lookup("alibaba")
+	if err != nil {
+		return err
+	}
+	items, relations, err := adapter.List(ctx, providers.Account{WorkspaceID: workspaceID, ID: accountID, Provider: "alibaba", Region: region}, service, region)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, service, region, items, relations)
+}

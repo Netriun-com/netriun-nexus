@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package alibaba adapts the existing alibaba compute collector.
+// Package alibaba adapts the existing Alibaba compute and service collectors.
 package alibaba
 
 import (

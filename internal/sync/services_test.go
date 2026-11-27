@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/netriun/nexus/internal/jobs"
+	"github.com/netriun/nexus/internal/providers"
 	syncer "github.com/netriun/nexus/internal/sync"
 	"github.com/netriun/nexus/internal/worker"
 )
@@ -33,7 +34,13 @@ func serviceState(t *testing.T, s *syncer.Store, account int64, service, region 
 }
 func serviceWrite(s *syncer.Store, value string) syncer.Collector {
 	return func(ctx context.Context, p syncer.Payload, _ syncer.Account) (bool, error) {
-		return false, s.SaveServiceSnapshot(ctx, p.WorkspaceID, p.AccountID, p.Service, p.Region, map[string]any{"data": []map[string]string{{"id": value, "region": p.Region}}})
+		kind := map[string]string{syncer.Desktops: providers.Desktop, syncer.Users: providers.DirectoryUser, syncer.Buckets: providers.Bucket, syncer.SecurityGroups: providers.SecurityGroup}[p.Service]
+		region := p.Region
+		if region == "*" {
+			region = "cn-hangzhou"
+		}
+		item := providers.Resource{WorkspaceID: p.WorkspaceID, AccountID: p.AccountID, Provider: "alibaba", Service: p.Service, Kind: kind, Region: region, ProviderID: value, Name: value, State: "available", Tags: map[string]string{}, Summary: map[string]any{}, Details: map[string]any{"id": value, "region": region}}
+		return false, s.SaveServiceSnapshot(ctx, p.WorkspaceID, p.AccountID, p.Service, p.Region, []providers.Resource{item}, nil)
 	}
 }
 func TestServiceManualDurabilityDedupeAndOwnership(t *testing.T) {
@@ -149,11 +156,19 @@ func TestServiceLeaseFencingAndFailurePreservesSnapshot(t *testing.T) {
 			if err := s.DB.QueryRow(t.Context(), `SELECT ss.payload->'data'->0->>'id',st.last_error_code,st.empty,st.last_success_at IS NOT NULL FROM sync_state st JOIN service_snapshots ss ON ss.account_id=st.account_id AND ss.service_key=st.service AND ss.region=st.region WHERE st.account_id=$1`, account).Scan(&value, &code, &empty, &success); err != nil {
 				t.Fatal(err)
 			}
+			var catalogValue string
+			var same bool
+			if err := s.DB.QueryRow(t.Context(), `SELECT r.provider_id,r.details=ss.payload->'data'->0 FROM resources r JOIN service_snapshots ss ON ss.workspace_id=r.workspace_id AND ss.account_id=r.account_id AND ss.service_key=r.service WHERE r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3`, workspace, account, scope.service).Scan(&catalogValue, &same); err != nil {
+				t.Fatal(err)
+			}
+			if catalogValue != "fresh" || !same {
+				t.Fatalf("stale/failure changed catalog: %s parity=%v", catalogValue, same)
+			}
 			if value != "fresh" || code != "NX-SYNC-AUTH" || empty || !success {
 				t.Fatalf("failure lost data/history: %s %s %v %v", value, code, empty, success)
 			}
 			// No caller can write snapshots without a lease-bearing handler context.
-			if err := s.SaveServiceSnapshot(t.Context(), workspace, account, scope.service, scope.region, map[string]any{}); !errors.Is(err, jobs.ErrLeaseLost) {
+			if err := s.SaveServiceSnapshot(t.Context(), workspace, account, scope.service, scope.region, nil, nil); !errors.Is(err, jobs.ErrLeaseLost) {
 				t.Fatalf("unfenced write: %v", err)
 			}
 		})

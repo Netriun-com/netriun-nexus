@@ -1,0 +1,23 @@
+{
+  "Desktops": [
+    {
+      "DesktopId": "ecd-one",
+      "DesktopName": "Engineering",
+      "DesktopStatus": "Running",
+      "DesktopType": "ecd.basic.large",
+      "OfficeSiteId": "dir-main",
+      "ChargeType": "PrePaid",
+      "EndUserIds": [
+        "alice"
+      ],
+      "Tags": [
+        {
+          "Key": "team",
+          "Value": "engineering"
+        }
+      ]
+    }
+  ],
+  "NextToken": "page-two",
+  "RequestId": "fixture"
+}

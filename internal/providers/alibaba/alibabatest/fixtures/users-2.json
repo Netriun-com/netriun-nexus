@@ -1,0 +1,9 @@
+{
+  "Users": [
+    {
+      "EndUserId": "bob",
+      "Status": 9
+    }
+  ],
+  "RequestId": "fixture"
+}

@@ -4,13 +4,10 @@ package app
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/netriun/nexus/internal/cloud"
@@ -67,56 +64,7 @@ func (a *App) ossBuckets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) collectOSSBuckets(ctx context.Context, workspaceID, accountID int64) error {
-	credentials, err := a.credentials(ctx, workspaceID, accountID, "alibaba")
-	if err != nil {
-		return err
-	}
-	seedRegion := "cn-hangzhou"
-	if err = a.DB.QueryRow(ctx, `SELECT COALESCE(NULLIF(regions[1],''),'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, accountID, workspaceID).Scan(&seedRegion); err != nil {
-		return err
-	}
-	items, err := cloud.OSSListBuckets(ctx, cloud.OSSClient(seedRegion, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken))
-	if err != nil {
-		return err
-	}
-	// Commit only complete snapshots. Any bucket failure retains the entire
-	// previous snapshot, including the failed bucket's details and statistics.
-	slots := make(chan struct{}, 6)
-	failures := make(chan error, len(items))
-	var wg sync.WaitGroup
-	for index := range items {
-		wg.Go(func() {
-			select {
-			case slots <- struct{}{}:
-			case <-ctx.Done():
-				failures <- ctx.Err()
-				return
-			}
-			defer func() { <-slots }()
-			client := cloud.OSSClient(items[index].Region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-			if err := cloud.OSSBucketDetails(ctx, client, &items[index]); err != nil {
-				failures <- err
-				return
-			}
-			if err := cloud.OSSBucketStats(ctx, client, &items[index]); err != nil {
-				failures <- err
-				return
-			}
-			items[index].Status = "available"
-		})
-	}
-	wg.Wait()
-	close(failures)
-	var failed []error
-	for err := range failures {
-		failed = append(failed, err)
-	}
-	if err := errors.Join(failed...); err != nil {
-		return err
-	}
-
-	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
-	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, "oss.buckets", "*", map[string]any{"data": items, "failed_buckets": []string{}})
+	return a.collectService(ctx, workspaceID, accountID, "oss.buckets", "*")
 }
 
 func (a *App) createOSSBucket(w http.ResponseWriter, r *http.Request) {

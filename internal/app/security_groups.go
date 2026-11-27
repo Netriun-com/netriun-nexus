@@ -5,17 +5,14 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/netriun/nexus/internal/secure"
 	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -106,46 +103,7 @@ func (a *App) instanceSecurityGroups(ctx context.Context, workspaceID, accountID
 }
 
 func (a *App) collectSecurityGroups(ctx context.Context, workspaceID, accountID int64, region string) error {
-	client, err := a.alibabaClient(ctx, workspaceID, accountID, region)
-	if err != nil {
-		return err
-	}
-	items, err := cloud.AlibabaSecurityGroups(ctx, client, region)
-	if err != nil {
-		return err
-	}
-	slots := make(chan struct{}, 8)
-	failures := make(chan error, len(items))
-	var wg sync.WaitGroup
-	for index := range items {
-		wg.Go(func() {
-			select {
-			case slots <- struct{}{}:
-			case <-ctx.Done():
-				failures <- ctx.Err()
-				return
-			}
-			defer func() { <-slots }()
-			rules, err := cloud.AlibabaSecurityGroupRules(ctx, client, region, items[index].ID)
-			if err != nil {
-				failures <- err
-				return
-			}
-			items[index].Rules, items[index].RulesAvailable = rules, true
-		})
-	}
-	wg.Wait()
-	close(failures)
-	var failed []error
-	for err := range failures {
-		failed = append(failed, err)
-	}
-	if err := errors.Join(failed...); err != nil {
-		return err
-	}
-
-	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
-	return a.Sync.SaveServiceSnapshot(ctx, workspaceID, accountID, "ecs.security_groups", region, map[string]any{"data": items, "failed_regions": []string{}})
+	return a.collectService(ctx, workspaceID, accountID, "ecs.security_groups", region)
 }
 
 type securityGroupRuleRequest struct {

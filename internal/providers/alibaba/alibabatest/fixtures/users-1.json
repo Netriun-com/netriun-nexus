@@ -1,0 +1,13 @@
+{
+  "Users": [
+    {
+      "Id": 9007199254740993,
+      "EndUserId": "alice",
+      "RealNickName": "Alice",
+      "Email": "alice@example.invalid",
+      "Status": 0
+    }
+  ],
+  "NextToken": "page-two",
+  "RequestId": "fixture"
+}

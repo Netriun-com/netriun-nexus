@@ -22,7 +22,7 @@
     "/resources": {
       "get": {
         "summary": "List stored resource summaries",
-        "description": "Reads only the Nexus database; never starts a provider collection. Requires account.view access. Without account selection, includes all accessible accounts in the caller's workspace (possibly across providers). An empty accessible set returns {\"data\": []}. Filters are combined with AND; empty string filters are omitted. Sorted by name using the database collation, then by id. Returns summary, never details. No runtime collector populates this catalog yet; population is introduced in later phase 4 tasks.",
+        "description": "Reads only the Nexus database; never starts a provider collection. Requires account.view access. Without account selection, includes all accessible accounts in the caller's workspace (possibly across providers). An empty accessible set returns {\"data\": []}. Filters are combined with AND; empty string filters are omitted. Sorted by name using the database collation, then by id. Returns summary, never details. Compute, Alibaba EDS desktops and directory users, OSS buckets, and ECS security groups populate this catalog on their next scheduled or manual sync; no startup backfill runs.",
         "parameters": [
           {
             "name": "kind",
