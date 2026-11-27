@@ -1,0 +1,28 @@
+{
+  "DescribeVpcs": [
+    "<DescribeVpcsResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><vpcSet><item><vpcId>vpc-1</vpcId><state>available</state><cidrBlock>10.1.0.0/16</cidrBlock><tagSet><item><key>Name</key><value>Network 1</value></item></tagSet></item></vpcSet><nextToken>next</nextToken></DescribeVpcsResponse>",
+    "<DescribeVpcsResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><vpcSet><item><vpcId>vpc-2</vpcId><state>available</state><cidrBlock>10.2.0.0/16</cidrBlock><tagSet><item><key>Name</key><value>Network 2</value></item></tagSet></item></vpcSet></DescribeVpcsResponse>"
+  ],
+  "DescribeSubnets": [
+    "<DescribeSubnetsResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><subnetSet><item><subnetId>subnet-1</subnetId><vpcId>vpc-1</vpcId><state>available</state><cidrBlock>10.1.1.0/24</cidrBlock><availabilityZone>us-east-1a</availabilityZone><tagSet><item><key>Name</key><value>Subnet 1</value></item></tagSet></item></subnetSet><nextToken>next</nextToken></DescribeSubnetsResponse>",
+    "<DescribeSubnetsResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><subnetSet><item><subnetId>subnet-2</subnetId><vpcId>vpc-2</vpcId><state>available</state><cidrBlock>10.2.1.0/24</cidrBlock><availabilityZone>us-east-1a</availabilityZone><tagSet><item><key>Name</key><value>Subnet 2</value></item></tagSet></item></subnetSet></DescribeSubnetsResponse>"
+  ],
+  "DescribeLoadBalancers": [
+    "<DescribeLoadBalancersResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeLoadBalancersResult><LoadBalancers><member><LoadBalancerArn>arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/lb-1/1</LoadBalancerArn><LoadBalancerName>LB 1</LoadBalancerName><VpcId>vpc-1</VpcId><Type>application</Type><State><Code>active</Code></State><DNSName>example.invalid</DNSName></member></LoadBalancers><NextMarker>next</NextMarker></DescribeLoadBalancersResult></DescribeLoadBalancersResponse>",
+    "<DescribeLoadBalancersResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeLoadBalancersResult><LoadBalancers><member><LoadBalancerArn>arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/lb-2/2</LoadBalancerArn><LoadBalancerName>LB 2</LoadBalancerName><VpcId>vpc-2</VpcId><Type>application</Type><State><Code>active</Code></State><DNSName>example.invalid</DNSName></member></LoadBalancers></DescribeLoadBalancersResult></DescribeLoadBalancersResponse>"
+  ],
+  "DescribeTargetGroups": [
+    "<DescribeTargetGroupsResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeTargetGroupsResult><TargetGroups><member><TargetGroupArn>arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/tg-1/1</TargetGroupArn><TargetType>instance</TargetType></member></TargetGroups><NextMarker>next</NextMarker></DescribeTargetGroupsResult></DescribeTargetGroupsResponse>",
+    "<DescribeTargetGroupsResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeTargetGroupsResult><TargetGroups><member><TargetGroupArn>arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/tg-2/2</TargetGroupArn><TargetType>ip</TargetType></member></TargetGroups></DescribeTargetGroupsResult></DescribeTargetGroupsResponse>"
+  ],
+  "DescribeTargetHealth": [
+    "<DescribeTargetHealthResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeTargetHealthResult><TargetHealthDescriptions><member><Target><Id>i-1</Id><Port>80</Port></Target><TargetHealth><State>healthy</State></TargetHealth></member></TargetHealthDescriptions></DescribeTargetHealthResult></DescribeTargetHealthResponse>"
+  ],
+  "DescribeTags": [
+    "<DescribeTagsResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><DescribeTagsResult><TagDescriptions><member><ResourceArn>$LB</ResourceArn><Tags><member><Key>team</Key><Value>platform</Value></member></Tags></member></TagDescriptions></DescribeTagsResult></DescribeTagsResponse>"
+  ],
+  "DescribeInstances": [
+    "<DescribeInstancesResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><reservationSet><item><instancesSet><item><instanceId>i-1</instanceId><instanceState><name>running</name></instanceState><instanceType>t3.small</instanceType><subnetId>subnet-1</subnetId><groupSet><item><groupId>sg-1</groupId></item></groupSet><tagSet><item><key>Name</key><value>VM 1</value></item></tagSet></item></instancesSet></item></reservationSet><nextToken>next</nextToken></DescribeInstancesResponse>",
+    "<DescribeInstancesResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\"><reservationSet><item><instancesSet><item><instanceId>i-2</instanceId><instanceState><name>running</name></instanceState><instanceType>t3.small</instanceType><subnetId>subnet-2</subnetId><groupSet><item><groupId>sg-2</groupId></item></groupSet><tagSet><item><key>Name</key><value>VM 2</value></item></tagSet></item></instancesSet></item></reservationSet></DescribeInstancesResponse>"
+  ]
+}

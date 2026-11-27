@@ -190,8 +190,12 @@ func TestIntegration(t *testing.T) {
 	proveConnection("testadmin@example.com", "alibaba", Credentials{AccessKey: "LTAI-test", SecretKey: "alibaba-secret"})
 	alibabaAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Alibaba Production", "provider": "alibaba", "owner": "Platform", "group_id": group2, "regions": []string{"cn-hangzhou", "ap-southeast-1"}, "credentials": map[string]string{"access_key_id": "LTAI-test", "secret_access_key": "alibaba-secret"}}, 200))
 	var syncRows int
-	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1", alibabaAccount).Scan(&syncRows); err != nil || syncRows != 9 {
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1", alibabaAccount).Scan(&syncRows); err != nil || syncRows != 11 {
 		t.Fatalf("account save did not reconcile sync scopes: rows=%d err=%v", syncRows, err)
+	}
+	var networkRows int
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sync_state WHERE account_id=$1 AND service='network'", alibabaAccount).Scan(&networkRows); err != nil || networkRows != 2 {
+		t.Fatalf("network scope rows=%d err=%v", networkRows, err)
 	}
 	var alibabaProvider, alibabaCipher string
 	if err = a.DB.QueryRow(ctx, "SELECT provider,credentials FROM cloud_accounts WHERE id=$1", alibabaAccount).Scan(&alibabaProvider, &alibabaCipher); err != nil || alibabaProvider != "alibaba" || strings.Contains(alibabaCipher, "alibaba-secret") {
@@ -349,10 +353,10 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 		other := read("/api/v1/sync-state", secondOwner)
-		if len(other) != 1 || other[0].AccountID != secondAccount {
+		if len(other) != 2 || other[0].AccountID != secondAccount || other[1].AccountID != secondAccount {
 			t.Fatalf("workspace isolation: %+v", other)
 		}
-		for _, service := range []string{syncer.Desktops, syncer.Users, syncer.Buckets, syncer.SecurityGroups} {
+		for _, service := range []string{syncer.Network, syncer.Desktops, syncer.Users, syncer.Buckets, syncer.SecurityGroups} {
 			rows := read(fmt.Sprintf("/api/v1/sync-state?account_id=%d&service=%s", alibabaAccount, service), adminToken)
 			if len(rows) == 0 {
 				t.Fatalf("missing service %s", service)

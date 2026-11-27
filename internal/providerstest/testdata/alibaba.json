@@ -1,0 +1,375 @@
+{
+  "DescribeVpcs": [
+    {
+      "Vpcs": {
+        "Vpc": [
+          {
+            "VpcId": "vpc-1",
+            "VpcName": "Network 1",
+            "Status": "Available",
+            "CidrBlock": "10.1.0.0/16",
+            "Tags": {
+              "Tag": [
+                {
+                  "Key": "team",
+                  "Value": "platform"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 1,
+      "PageSize": 1
+    },
+    {
+      "Vpcs": {
+        "Vpc": [
+          {
+            "VpcId": "vpc-2",
+            "VpcName": "Network 2",
+            "Status": "Available",
+            "CidrBlock": "10.2.0.0/16",
+            "Tags": {
+              "Tag": [
+                {
+                  "Key": "team",
+                  "Value": "platform"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 2,
+      "PageSize": 1
+    }
+  ],
+  "DescribeVSwitches": [
+    {
+      "VSwitches": {
+        "VSwitch": [
+          {
+            "VSwitchId": "subnet-1",
+            "VSwitchName": "Subnet 1",
+            "VpcId": "vpc-1",
+            "Status": "Available",
+            "CidrBlock": "10.1.1.0/24"
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 1,
+      "PageSize": 1
+    },
+    {
+      "VSwitches": {
+        "VSwitch": [
+          {
+            "VSwitchId": "subnet-2",
+            "VSwitchName": "Subnet 2",
+            "VpcId": "vpc-2",
+            "Status": "Available",
+            "CidrBlock": "10.2.1.0/24"
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 2,
+      "PageSize": 1
+    }
+  ],
+  "DescribeLoadBalancers": [
+    {
+      "LoadBalancers": {
+        "LoadBalancer": [
+          {
+            "LoadBalancerId": "lb-1",
+            "LoadBalancerName": "CLB 1",
+            "LoadBalancerStatus": "active"
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 1,
+      "PageSize": 1
+    },
+    {
+      "LoadBalancers": {
+        "LoadBalancer": [
+          {
+            "LoadBalancerId": "lb-2",
+            "LoadBalancerName": "CLB 2",
+            "LoadBalancerStatus": "active"
+          }
+        ]
+      },
+      "TotalCount": 2,
+      "PageNumber": 2,
+      "PageSize": 1
+    }
+  ],
+  "DescribeLoadBalancerAttribute": [
+    {
+      "LoadBalancerId": "$LB",
+      "VpcId": "vpc-1",
+      "BackendServers": {
+        "BackendServer": [
+          {
+            "Type": "ecs",
+            "ServerId": "i-1"
+          },
+          {
+            "Type": "eni",
+            "ServerId": "eni-one"
+          }
+        ]
+      },
+      "Tags": {
+        "Tag": [
+          {
+            "TagKey": "team",
+            "TagValue": "platform"
+          }
+        ]
+      }
+    }
+  ],
+  "DescribeVServerGroups": [
+    {
+      "VServerGroups": {
+        "VServerGroup": [
+          {
+            "VServerGroupId": "vsg-1",
+            "AssociatedObjects": {
+              "Listeners": {
+                "Listener": [
+                  {
+                    "Port": 80,
+                    "Protocol": "http"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "VServerGroupId": "vsg-unused",
+            "AssociatedObjects": {}
+          }
+        ]
+      }
+    }
+  ],
+  "DescribeVServerGroupAttribute": [
+    {
+      "BackendServers": {
+        "BackendServer": [
+          {
+            "Type": "ecs",
+            "ServerId": "i-2"
+          }
+        ]
+      }
+    }
+  ],
+  "DescribeMasterSlaveServerGroups": [
+    {
+      "MasterSlaveServerGroups": {
+        "MasterSlaveServerGroup": [
+          {
+            "MasterSlaveServerGroupId": "msg-1",
+            "AssociatedObjects": {
+              "Listeners": {
+                "Listener": [
+                  {
+                    "Port": 80,
+                    "Protocol": "http"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "DescribeMasterSlaveServerGroupAttribute": [
+    {
+      "MasterSlaveBackendServers": {
+        "MasterSlaveBackendServer": [
+          {
+            "Type": "ecs",
+            "ServerId": "i-missing",
+            "ServerType": "Master"
+          }
+        ]
+      }
+    }
+  ],
+  "ListLoadBalancers": [
+    {
+      "LoadBalancers": [
+        {
+          "LoadBalancerId": "alb-1",
+          "LoadBalancerName": "ALB 1",
+          "VpcId": "vpc-1",
+          "LoadBalancerStatus": "Active",
+          "Tags": [
+            {
+              "Key": "team",
+              "Value": "platform"
+            }
+          ]
+        }
+      ],
+      "NextToken": "next"
+    },
+    {
+      "LoadBalancers": [
+        {
+          "LoadBalancerId": "alb-2",
+          "LoadBalancerName": "ALB 2",
+          "VpcId": "vpc-2",
+          "LoadBalancerStatus": "Active",
+          "Tags": [
+            {
+              "Key": "team",
+              "Value": "platform"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ListListeners": [
+    {
+      "Listeners": [
+        {
+          "ListenerId": "lsn-1",
+          "DefaultActions": [
+            {
+              "Type": "ForwardGroup",
+              "ForwardGroupConfig": {
+                "ServerGroupTuples": [
+                  {
+                    "ServerGroupId": "group-default"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "NextToken": "next"
+    },
+    {
+      "Listeners": [
+        {
+          "ListenerId": "lsn-2",
+          "DefaultActions": []
+        }
+      ]
+    }
+  ],
+  "ListRules": [
+    {
+      "Rules": [
+        {
+          "RuleActions": [
+            {
+              "Type": "ForwardGroup",
+              "ForwardGroupConfig": {
+                "ServerGroupTuples": [
+                  {
+                    "ServerGroupId": "group-rule"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "NextToken": "next"
+    },
+    {
+      "Rules": [
+        {
+          "RuleActions": [
+            {
+              "Type": "TrafficMirror",
+              "TrafficMirrorConfig": {
+                "ServerGroupId": "must-not-be-a-backend"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ListServerGroupServers": [
+    {
+      "Servers": [
+        {
+          "ServerId": "i-1",
+          "ServerType": "Ecs"
+        }
+      ],
+      "NextToken": "next"
+    },
+    {
+      "Servers": [
+        {
+          "ServerId": "10.0.0.1",
+          "ServerType": "Ip"
+        }
+      ]
+    }
+  ],
+  "DescribeInstances": [
+    {
+      "Instances": {
+        "Instance": [
+          {
+            "InstanceId": "i-1",
+            "InstanceName": "VM 1",
+            "Status": "Running",
+            "InstanceType": "ecs.g6.large",
+            "VpcAttributes": {
+              "VpcId": "vpc-1",
+              "VSwitchId": "subnet-1"
+            },
+            "SecurityGroupIds": {
+              "SecurityGroupId": [
+                "sg-1"
+              ]
+            }
+          }
+        ]
+      },
+      "NextToken": "next"
+    },
+    {
+      "Instances": {
+        "Instance": [
+          {
+            "InstanceId": "i-2",
+            "InstanceName": "VM 2",
+            "Status": "Running",
+            "InstanceType": "ecs.g6.large",
+            "VpcAttributes": {
+              "VpcId": "vpc-2",
+              "VSwitchId": "subnet-2"
+            },
+            "SecurityGroupIds": {
+              "SecurityGroupId": [
+                "sg-2"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

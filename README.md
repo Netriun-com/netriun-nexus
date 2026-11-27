@@ -273,6 +273,23 @@ HTTP port, without a public Service. Set termination grace to at least
 budget, running concurrently with worker drain. See the
 [Helm chart README](deploy/helm/netriun-nexus/README.md) for separate Deployments.
 
+### Network resources
+
+AWS and Alibaba workers collect the `network` service per configured/discovered
+region. It contains VPCs (`network`), subnets/VSwitches (`subnet`), and AWS ELBv2
+or Alibaba CLB/ALB (`load_balancer`) resources. Collection is read-only and writes
+only the catalog in one lease-fenced transaction; it does not write instances or
+service snapshots. A failed or cancelled collection preserves the whole region.
+
+Migration `017_network_sync.sql` enables the service and records which service
+owns each relation, so independent compute syncs preserve network-discovered
+instance edges. Missing relation endpoints are skipped until a later network
+sync can resolve them. Existing accounts acquire network rows on scheduler
+reconciliation; known compute regions are reused after upgrade. Empty regional
+collections use the existing empty interval. See the
+[network adapter guide](internal/providers/NETWORK.md) for calls, permissions,
+normalization, and relation ownership.
+
 ### Scheduled sync
 
 Workers maintain `sync_state` and enqueue durable `scheduled.sync` jobs without
@@ -281,6 +298,7 @@ use the same values in all processes. Compose passes these settings through.
 
 | Environment variable | Default | Scope |
 | --- | --- | --- |
+| `NEXUS_SYNC_NETWORK_INTERVAL` | `15m` | AWS/Alibaba networks, subnets, and load balancers |
 | `NEXUS_SYNC_COMPUTE_INTERVAL` | `5m` | Compute inventory |
 | `NEXUS_SYNC_DESKTOPS_INTERVAL` | `5m` | EDS desktops |
 | `NEXUS_SYNC_USERS_INTERVAL` | `5m` | EDS users |

@@ -7,6 +7,7 @@
       "type": "object",
       "properties": {
         "computeIntervalSeconds": { "type": "integer", "minimum": 1 },
+        "networkIntervalSeconds": { "type": "integer", "minimum": 1, "default": 900 },
         "desktopsIntervalSeconds": { "type": "integer", "minimum": 1 },
         "usersIntervalSeconds": { "type": "integer", "minimum": 1 },
         "securityGroupsIntervalSeconds": { "type": "integer", "minimum": 1 },

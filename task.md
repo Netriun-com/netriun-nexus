@@ -435,6 +435,8 @@ the PR).
 
 ### T22. Sync networks, subnets, and load balancers for Alibaba and AWS
 
+- [x] Implemented — regional read-only adapters, 15-minute configurable scheduling, lease-fenced catalog writes, and provider-reference relations; recorded-response and PostgreSQL tests cover pagination, failures, and relation ownership.
+
 Work:
 
 1. New `network` service in `sync_state` for Alibaba and AWS accounts, per

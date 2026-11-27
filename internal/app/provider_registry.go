@@ -49,6 +49,26 @@ func (a *App) newProviderRegistry() (*providers.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	awsAdapter, err = aws.WithNetwork(awsAdapter, func(ctx context.Context, account providers.Account, region string) (aws.NetworkClients, error) {
+		client, err := a.awsClient(ctx, account.WorkspaceID, account.ID, region)
+		if err != nil {
+			return aws.NetworkClients{}, err
+		}
+		return aws.NetworkClientsFor(client), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	alibabaAdapter, err = alibaba.WithNetwork(alibabaAdapter, func(ctx context.Context, account providers.Account, region string) (alibaba.NetworkClients, error) {
+		c, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
+		if err != nil {
+			return alibaba.NetworkClients{}, err
+		}
+		return alibaba.NewNetworkClients(region, c.AccessKey, c.SecretKey, c.SessionToken)
+	})
+	if err != nil {
+		return nil, err
+	}
 	azureAdapter, err := azure.New(func(ctx context.Context, account providers.Account) (*cloud.AzureClient, error) {
 		return a.azureClient(ctx, account.WorkspaceID, account.ID)
 	})

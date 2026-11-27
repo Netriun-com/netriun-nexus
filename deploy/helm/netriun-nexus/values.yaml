@@ -5,6 +5,7 @@ replicaCount: 1
 # Scheduler runs only in worker/all roles. All replicas must share these settings.
 sync:
   computeIntervalSeconds: 300
+  networkIntervalSeconds: 900
   desktopsIntervalSeconds: 300
   usersIntervalSeconds: 300
   securityGroupsIntervalSeconds: 900

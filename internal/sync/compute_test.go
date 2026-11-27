@@ -32,7 +32,7 @@ func TestManualJoinsScheduleAndScopesStatus(t *testing.T) {
 	if err := s.DB.QueryRow(t.Context(), `SELECT count(*),max(priority) FROM jobs`).Scan(&count, &priority); err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 || priority != 100 {
+	if count != 4 || priority != 100 {
 		t.Fatalf("duplicate or unpromoted schedule: %d %d", count, priority)
 	}
 	j, err := claimReady(t, s, "manual", time.Minute, syncer.JobKind)
@@ -308,7 +308,7 @@ func TestDiscoveryCadenceAndReplicaLock(t *testing.T) {
 	if err := s.Discover(t.Context(), func(context.Context, syncer.Account) map[string][]string { calls.Add(1); return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 2 || len(scopes(t, s, account)) != 1 {
+	if calls.Load() != 2 || len(scopes(t, s, account)) != 2 {
 		t.Fatal("failed discovery discarded known scopes")
 	}
 }

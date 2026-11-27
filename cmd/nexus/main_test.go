@@ -576,7 +576,7 @@ func TestScheduledRoleProcesses(t *testing.T) {
 				if err := db.QueryRow(t.Context(), "SELECT count(*) FROM sync_state WHERE account_id=$1 AND last_success_at IS NOT NULL", account).Scan(&n); err != nil {
 					t.Fatal(err)
 				}
-				return n == 1
+				return n == 2
 			})
 			p.stop(t, syscall.SIGTERM)
 			if _, err := db.Exec(t.Context(), "UPDATE sync_state SET next_due_at=now()-interval '1 second' WHERE account_id=$1", account); err != nil {
@@ -584,11 +584,11 @@ func TestScheduledRoleProcesses(t *testing.T) {
 			}
 			replacement := startProcess(t, dsn, role, "1s", "NEXUS_TEST_SCHEDULER=1")
 			eventually(t, func() bool {
-				var n int
-				if err := db.QueryRow(t.Context(), "SELECT count(*) FROM jobs WHERE status='succeeded' AND payload->>'account_id'=$1", fmt.Sprint(account)).Scan(&n); err != nil {
+				var compute, network int
+				if err := db.QueryRow(t.Context(), `SELECT count(*) FILTER(WHERE payload->>'service'='compute'),count(*) FILTER(WHERE payload->>'service'='network') FROM jobs WHERE status='succeeded' AND payload->>'account_id'=$1`, fmt.Sprint(account)).Scan(&compute, &network); err != nil {
 					t.Fatal(err)
 				}
-				return n == 2
+				return compute == 2 && network == 2
 			})
 			replacement.stop(t, syscall.SIGTERM)
 		})

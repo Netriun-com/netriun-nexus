@@ -103,6 +103,7 @@ All `sync` values are positive integer seconds, rendered as Go durations:
 
 | Helm value | Environment variable | Default seconds |
 | --- | --- | --- |
+| `sync.networkIntervalSeconds` | `NEXUS_SYNC_NETWORK_INTERVAL` | 900 |
 | `sync.computeIntervalSeconds` | `NEXUS_SYNC_COMPUTE_INTERVAL` | 300 |
 | `sync.desktopsIntervalSeconds` | `NEXUS_SYNC_DESKTOPS_INTERVAL` | 300 |
 | `sync.usersIntervalSeconds` | `NEXUS_SYNC_USERS_INTERVAL` | 300 |
@@ -117,7 +118,7 @@ All `sync` values are positive integer seconds, rendered as Go durations:
 Use the same settings for web/account saves and every worker replica. The `*`
 region sentinel denotes global Azure/GCP compute and Alibaba OSS ListBuckets
 (which has no region filter). These scopes never use the six-hour empty delay.
-AWS/Alibaba compute, EDS desktops, and security groups have regional rows;
+AWS/Alibaba compute and networks, EDS desktops, and security groups have regional rows;
 EDS users use the cn-shanghai or ap-southeast-1 directory endpoint scope.
 All-region accounts need successful worker region discovery.
 Database reconciliation backfills existing accounts after upgrade and preserves
@@ -210,3 +211,10 @@ helm lint deploy/helm/netriun-nexus -f deploy/helm/netriun-nexus/values-netriun-
 helm template nexus deploy/helm/netriun-nexus -n nexus \
   -f deploy/helm/netriun-nexus/values-netriun-k8s.yaml
 ```
+
+Network sync writes VPCs, subnets/VSwitches, and AWS ELBv2 or Alibaba CLB/ALB
+resources with provider-ID relations. It requires the additional read-only
+permissions in the [network adapter guide](../../../internal/providers/NETWORK.md).
+A failed regional collection preserves that region's catalog. Migration 017
+adds network scopes and relation ownership; compute and other services keep
+their existing intervals and collectors.

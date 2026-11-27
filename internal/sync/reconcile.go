@@ -104,6 +104,22 @@ func (s *Store) reconcileAccount(ctx context.Context, tx pgx.Tx, id int64, found
 			desired[Compute] = found[Compute]
 		}
 	}
+	if a.Provider == "aws" || a.Provider == "alibaba" {
+		desired[Network] = a.Regions
+		if len(a.Regions) == 0 {
+			desired[Network] = found[Network]
+			if desired[Network] == nil {
+				desired[Network] = found[Compute]
+			}
+			if desired[Network] == nil {
+				var known []string
+				if err := tx.QueryRow(ctx, `SELECT array_agg(region ORDER BY region) FROM sync_state WHERE account_id=$1 AND service=$2 AND region<>'*'`, id, Compute).Scan(&known); err != nil {
+					return err
+				}
+				desired[Network] = known
+			}
+		}
+	}
 	if a.Provider == "alibaba" {
 		desired[Desktops] = a.Regions
 		if len(a.Regions) == 0 {

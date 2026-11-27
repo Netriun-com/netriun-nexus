@@ -67,7 +67,7 @@ func Reconcile(ctx context.Context, tx pgx.Tx, scope Scope, items []Item, relati
 	if _, err = tx.Exec(ctx, `DELETE FROM resources WHERE workspace_id=$1 AND account_id=$2 AND service=$3 AND region=$4 AND kind=$5 AND NOT(provider_id=ANY($6))`, scope.WorkspaceID, scope.AccountID, scope.Service, scope.Region, scope.Kind, ids); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM resource_relations rr USING resources r WHERE rr.from_id=r.id AND r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3 AND r.region=$4 AND r.kind=$5`, scope.WorkspaceID, scope.AccountID, scope.Service, scope.Region, scope.Kind); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM resource_relations rr USING resources r WHERE rr.from_id=r.id AND r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3 AND r.region=$4 AND r.kind=$5 AND rr.owner_service IN ('',$3)`, scope.WorkspaceID, scope.AccountID, scope.Service, scope.Region, scope.Kind); err != nil {
 		return err
 	}
 	if len(relations) == 0 {
@@ -77,8 +77,8 @@ func Reconcile(ctx context.Context, tx pgx.Tx, scope Scope, items []Item, relati
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO resource_relations(from_id,to_id,relation)
- SELECT src.id,dst.id,e->>'relation' FROM jsonb_array_elements($6::jsonb) e
+	_, err = tx.Exec(ctx, `INSERT INTO resource_relations(from_id,to_id,relation,owner_service)
+ SELECT src.id,dst.id,e->>'relation',$3 FROM jsonb_array_elements($6::jsonb) e
  JOIN resources src ON src.workspace_id=$1 AND src.account_id=$2 AND src.service=$3 AND src.region=$4 AND src.kind=$5 AND src.provider_id=e->'from'->>'provider_id'
  JOIN resources dst ON dst.workspace_id=$1 AND dst.account_id=$2 AND dst.service=e->'to'->>'service' AND dst.region=e->'to'->>'region' AND dst.kind=e->'to'->>'kind' AND dst.provider_id=e->'to'->>'provider_id'
  ON CONFLICT DO NOTHING`, scope.WorkspaceID, scope.AccountID, scope.Service, scope.Region, scope.Kind, raw)

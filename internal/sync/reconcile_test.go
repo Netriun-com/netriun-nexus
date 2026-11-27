@@ -54,12 +54,12 @@ func scopes(t *testing.T, s *syncer.Store, id int64) map[string]int64 {
 func TestAccountScopeReconciliation(t *testing.T) {
 	s, _, account := setup(t)
 	changeAccount(t, s, account, "aws", []string{"us-east-1"})
-	if got := scopes(t, s, account); len(got) != 1 || got["compute:us-east-1"] == 0 {
+	if got := scopes(t, s, account); len(got) != 2 || got["compute:us-east-1"] == 0 || got["network:us-east-1"] == 0 {
 		t.Fatalf("add: %v", got)
 	}
 	old := queued(t, s)
 	changeAccount(t, s, account, "aws", []string{"us-west-2"})
-	if got := scopes(t, s, account); len(got) != 1 || got["compute:us-west-2"] == 0 {
+	if got := scopes(t, s, account); len(got) != 2 || got["compute:us-west-2"] == 0 || got["network:us-west-2"] == 0 {
 		t.Fatalf("region change: %v", got)
 	}
 	if err := s.Handler(func(context.Context, syncer.Payload, syncer.Account) (bool, error) {
@@ -73,12 +73,12 @@ func TestAccountScopeReconciliation(t *testing.T) {
 	}
 	changeAccount(t, s, account, "alibaba", []string{"cn-hangzhou", "ap-southeast-1"})
 	before := scopes(t, s, account)
-	if len(before) != 9 {
+	if len(before) != 11 {
 		t.Fatalf("Alibaba scopes: %v", before)
 	}
 	changeAccount(t, s, account, "alibaba", []string{"cn-shanghai"})
 	after := scopes(t, s, account)
-	if len(after) != 5 || after["compute:cn-shanghai"] == 0 || after["eds.desktops:cn-shanghai"] == 0 {
+	if len(after) != 6 || after["compute:cn-shanghai"] == 0 || after["eds.desktops:cn-shanghai"] == 0 {
 		t.Fatalf("Alibaba region change: %v", after)
 	}
 	for _, service := range []string{syncer.Buckets} {
@@ -113,7 +113,7 @@ func TestUpgradeDiscoveryAndDisabledRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := scopes(t, s, account)
-	if len(found) != 2 {
+	if len(found) != 4 {
 		t.Fatalf("upgrade: %v", found)
 	}
 	id := found["compute:us-east-1"]
@@ -123,10 +123,10 @@ func TestUpgradeDiscoveryAndDisabledRows(t *testing.T) {
 	if err := s.Reconcile(t.Context(), func(context.Context, syncer.Account) map[string][]string { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if got := scopes(t, s, account); len(got) != 2 || got["compute:us-east-1"] != id {
+	if got := scopes(t, s, account); len(got) != 4 || got["compute:us-east-1"] != id {
 		t.Fatalf("failed discovery removed known scopes: %v", got)
 	}
-	if n, err := s.EnqueueDue(t.Context()); err != nil || n != 1 {
+	if n, err := s.EnqueueDue(t.Context()); err != nil || n != 3 {
 		t.Fatalf("disabled scope enqueued: %d %v", n, err)
 	}
 }
