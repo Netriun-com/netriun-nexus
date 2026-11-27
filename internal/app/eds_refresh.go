@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/netriun/nexus/internal/resources"
 )
 
 type edsRegionCount struct {
@@ -68,8 +70,7 @@ func (a *App) edsCredentials(ctx context.Context, workspaceID, accountID int64) 
 	if err != nil {
 		return credentials, "", err
 	}
-	var seedRegion string
-	err = a.DB.QueryRow(ctx, `SELECT COALESCE((SELECT min(region) FROM instances WHERE account_id=$1), NULLIF(regions[1],''), 'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, accountID, workspaceID).Scan(&seedRegion)
+	seedRegion, err := resources.New(a.DB).ComputeSeedRegion(ctx, workspaceID, []int64{accountID})
 	return credentials, seedRegion, err
 }
 

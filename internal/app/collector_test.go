@@ -143,7 +143,7 @@ func computeTestApp(t *testing.T, provider, region string) (*App, int64, int64) 
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("set TEST_DATABASE_URL for compute dual-write integration tests")
+		t.Skip("set TEST_DATABASE_URL for compute catalog integration tests")
 	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -201,6 +201,7 @@ func computeTestApp(t *testing.T, provider, region string) (*App, int64, int64) 
 	if err := a.Sync.Reconcile(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
+	rejectLegacyInventoryWrites(t, a)
 	return a, workspace, account
 }
 
@@ -288,23 +289,19 @@ func inventorySnapshot(t *testing.T, a *App, account int64) string {
 
 func assertComputeParity(t *testing.T, a *App, workspace, account int64, count int) {
 	t.Helper()
-	var n, m int
-	var same bool
-	err := a.DB.QueryRow(t.Context(), `SELECT
- (SELECT count(*) FROM instances WHERE account_id=$1),
- (SELECT count(*) FROM resources WHERE account_id=$1 AND service='compute' AND kind='instance'),
- NOT EXISTS(SELECT 1 FROM (SELECT * FROM instances WHERE account_id=$1) i FULL JOIN
- (SELECT * FROM resources WHERE workspace_id=$2 AND account_id=$1 AND service='compute' AND kind='instance') r
- ON i.region=r.region AND i.instance_id=r.provider_id
- WHERE i.id IS NULL OR r.id IS NULL OR (i.name,i.state,i.instance_type,i.public_ip,i.private_ip,i.details)
- IS DISTINCT FROM (r.name,r.state,r.summary->>'instance_type',r.summary->>'public_ip',r.summary->>'private_ip',r.details)
- OR r.tags IS DISTINCT FROM coalesce(r.details->'tags','{}'::jsonb) OR r.summary->>'provider_type' IS NULL)`, account, workspace).Scan(&n, &m, &same)
-	if err != nil || n != count || m != count || !same {
-		t.Fatalf("dual-write parity: instances=%d resources=%d same=%v err=%v", n, m, same, err)
+	var n int
+	var valid bool
+	err := a.DB.QueryRow(t.Context(), `SELECT count(*),COALESCE(bool_and(r.tags=coalesce(r.details->'tags','{}'::jsonb) AND r.summary->>'provider_type' IS NOT NULL),true) FROM resources r WHERE workspace_id=$1 AND account_id=$2 AND service='compute' AND kind='instance'`, workspace, account).Scan(&n, &valid)
+	if err != nil || n != count || !valid {
+		t.Fatalf("catalog count=%d want=%d valid=%v err=%v", n, count, valid, err)
+	}
+	var legacy int
+	if err := a.DB.QueryRow(t.Context(), `SELECT count(*) FROM instances WHERE account_id=$1`, account).Scan(&legacy); err != nil || legacy != 0 {
+		t.Fatalf("legacy writes: %d %v", legacy, err)
 	}
 }
 
-func TestComputeRegistryDualWriteRecordedResponses(t *testing.T) {
+func TestComputeRegistryResourcesRecordedResponses(t *testing.T) {
 	for _, tc := range []struct{ provider, region string }{{"aws", "us-east-1"}, {"alibaba", "cn-hangzhou"}, {"azure", "*"}, {"gcp", "*"}} {
 		t.Run(tc.provider, func(t *testing.T) {
 			a, workspace, account := computeTestApp(t, tc.provider, tc.region)
@@ -315,7 +312,7 @@ func TestComputeRegistryDualWriteRecordedResponses(t *testing.T) {
 			if oldRegion == "*" {
 				oldRegion = "gone-region"
 			}
-			if _, err := a.DB.Exec(t.Context(), `WITH old_instance AS (INSERT INTO instances(account_id,region,instance_id,state,instance_type) VALUES($1,$2,'old','running','small') RETURNING id) INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id) VALUES($3,$1,$4,'compute','instance',$2,'old')`, account, oldRegion, workspace, tc.provider); err != nil {
+			if _, err := a.DB.Exec(t.Context(), `INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id) VALUES($3,$1,$4,'compute','instance',$2,'old')`, account, oldRegion, workspace, tc.provider); err != nil {
 				t.Fatal(err)
 			}
 			if err := runComputeTest(t, a, t.Context(), workspace, account, tc.region); err != nil {
@@ -354,7 +351,7 @@ func TestComputeRegistryDualWriteRecordedResponses(t *testing.T) {
 				// Filter to one configured region. The other previously stored region must
 				// be removed from both tables even though it is absent after filtering.
 				var selected string
-				if err := a.DB.QueryRow(t.Context(), `SELECT min(region) FROM instances WHERE account_id=$1`, account).Scan(&selected); err != nil {
+				if err := a.DB.QueryRow(t.Context(), `SELECT min(region) FROM resources WHERE account_id=$1 AND service='compute' AND kind='instance'`, account).Scan(&selected); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := a.DB.Exec(t.Context(), `UPDATE cloud_accounts SET regions=ARRAY[$2] WHERE id=$1`, account, selected); err != nil {

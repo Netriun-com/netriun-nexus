@@ -192,7 +192,7 @@ func TestExpiredAttemptCannotOverwriteInventory(t *testing.T) {
 		t.Fatal("stale write accepted")
 	}
 	var id string
-	if err := s.DB.QueryRow(t.Context(), `SELECT instance_id FROM instances WHERE account_id=$1`, account).Scan(&id); err != nil || id != "fresh" {
+	if err := s.DB.QueryRow(t.Context(), `SELECT provider_id FROM resources WHERE account_id=$1 AND service='compute' AND kind='instance'`, account).Scan(&id); err != nil || id != "fresh" {
 		t.Fatalf("new inventory overwritten: %s %v", id, err)
 	}
 	if err := s.DB.QueryRow(t.Context(), `SELECT provider_id FROM resources WHERE workspace_id=$1 AND account_id=$2 AND service='compute' AND kind='instance'`, workspace, account).Scan(&id); err != nil || id != "fresh" {

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/jobs"
 	"github.com/netriun/nexus/internal/providers"
 	syncer "github.com/netriun/nexus/internal/sync"
@@ -64,7 +65,7 @@ func TestIntegration(t *testing.T) {
 	}
 	mailer := &fakeMailer{}
 	a.Mailer = mailer
-	defer a.Close()
+	t.Cleanup(a.Close)
 	if !strings.HasPrefix(a.InstallationID, "ins_") {
 		t.Fatalf("stable installation ID was not created: %q", a.InstallationID)
 	}
@@ -92,6 +93,7 @@ func TestIntegration(t *testing.T) {
 	if err = a.DB.QueryRow(ctx, "SELECT workspace_id FROM users WHERE username='testadmin'").Scan(&workspaceID); err != nil {
 		t.Fatal(err)
 	}
+	rejectLegacyInventoryWrites(t, a)
 	h := a.Handler()
 	request := func(method, path, token string, body any, status int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -239,7 +241,7 @@ func TestIntegration(t *testing.T) {
 		account int64
 		id      *int64
 	}{{account1, &i1}, {account2, &i2}} {
-		if err = a.DB.QueryRow(ctx, "INSERT INTO instances(account_id,instance_id,region,state,instance_type) VALUES($1,$2,'us-east-1','running','t3.micro') RETURNING id", p.account, fmt.Sprint("i-", p.account)).Scan(p.id); err != nil {
+		if err = a.DB.QueryRow(ctx, "INSERT INTO resources(workspace_id,account_id,provider,service,kind,provider_id,region,state,summary) SELECT workspace_id,id,provider,'compute','instance',$2,'us-east-1','running',jsonb_build_object('instance_type','t3.micro') FROM cloud_accounts WHERE id=$1 RETURNING id", p.account, fmt.Sprint("i-", p.account)).Scan(p.id); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -263,14 +265,14 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var batchCount int
-	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM instances WHERE account_id=$1 AND details->>'batch'='true'", account1).Scan(&batchCount); err != nil || batchCount != 2 {
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM resources WHERE account_id=$1 AND service='compute' AND kind='instance' AND details->>'batch'='true'", account1).Scan(&batchCount); err != nil || batchCount != 2 {
 		t.Fatalf("batch inventory rows were not persisted: count=%d err=%v", batchCount, err)
 	}
-	if _, err = a.DB.Exec(ctx, "DELETE FROM instances WHERE account_id=$1 AND instance_id='i-batch-second'", account1); err != nil {
+	if _, err = a.DB.Exec(ctx, "DELETE FROM resources WHERE account_id=$1 AND provider_id='i-batch-second' AND service='compute' AND kind='instance'", account1); err != nil {
 		t.Fatal(err)
 	}
 	var secondInstance int64
-	if err = a.DB.QueryRow(ctx, "INSERT INTO instances(account_id,instance_id,region,state,instance_type) VALUES($1,'i-tenant-two','us-east-1','running','t3.nano') RETURNING id", secondAccount).Scan(&secondInstance); err != nil {
+	if err = a.DB.QueryRow(ctx, "INSERT INTO resources(workspace_id,account_id,provider,service,kind,provider_id,region,state,summary) SELECT workspace_id,id,provider,'compute','instance','i-tenant-two','us-east-1','running',jsonb_build_object('instance_type','t3.nano') FROM cloud_accounts WHERE id=$1 RETURNING id", secondAccount).Scan(&secondInstance); err != nil {
 		t.Fatal(err)
 	}
 	request("GET", fmt.Sprintf("/api/v1/instances/%d", secondInstance), adminToken, nil, 404)
@@ -759,7 +761,7 @@ func TestIntegration(t *testing.T) {
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules", alibabaAccount), viewer, map[string]any{}, 403)
 	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules/invalid?region=cn-hangzhou&direction=ingress", alibabaAccount), adminToken, nil, 400)
 	var alibabaInstance int64
-	if err = a.DB.QueryRow(ctx, `INSERT INTO instances(account_id,instance_id,region,name,state,instance_type,details) VALUES($1,'i-alibaba-security','cn-hangzhou','secure-web','running','ecs.g7.large','{"security_group_ids":["sg-one"],"vpc_id":"vpc-one"}') RETURNING id`, alibabaAccount).Scan(&alibabaInstance); err != nil {
+	if err = a.DB.QueryRow(ctx, `INSERT INTO resources(workspace_id,account_id,provider,service,kind,provider_id,region,name,state,summary,details) SELECT workspace_id,id,provider,'compute','instance','i-alibaba-security','cn-hangzhou','secure-web','running','{"instance_type":"ecs.g7.large"}','{"security_group_ids":["sg-one"],"vpc_id":"vpc-one"}' FROM cloud_accounts WHERE id=$1 RETURNING id`, alibabaAccount).Scan(&alibabaInstance); err != nil {
 		t.Fatal(err)
 	}
 	instanceSecurityGroups := request("GET", fmt.Sprintf("/api/v1/instances/%d", alibabaInstance), adminToken, nil, 200)
@@ -977,6 +979,7 @@ func TestIntegration(t *testing.T) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}
 	}
+	t.Run("CompatibilityLists100000", func(t *testing.T) { testCompatibilityLists100000(t, a) })
 	t.Run("ResourcesAPI", func(t *testing.T) { testResourcesAPI(t, a) })
 	// Rate limiting is atomic and independent of email.
 	for i := 0; i < 21; i++ {
@@ -994,12 +997,50 @@ func TestIntegration(t *testing.T) {
 // Test fixtures may seed historical data without a worker lease. Production
 // snapshots can only be written through Store.SaveServiceSnapshot.
 func seedServiceSnapshot(ctx context.Context, a *App, workspace, account int64, service, region string, payload any) error {
+	if service == "eds.regions" {
+		return nil
+	} // derived from desktop resources
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = a.DB.Exec(ctx, `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload) VALUES($1,$2,$3,$4,$5) ON CONFLICT(account_id,service_key,region) DO UPDATE SET payload=excluded.payload,fetched_at=now()`, workspace, account, service, region, raw)
-	return err
+	var envelope struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return err
+	}
+	kind := map[string]string{"eds.desktops": "desktop", "eds.users": "directory_user", "oss.buckets": "bucket", "ecs.security_groups": "security_group"}[service]
+	tx, err := a.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for _, item := range envelope.Data {
+		itemRegion := region
+		for _, key := range []string{"RegionId", "region"} {
+			if v, ok := item[key].(string); ok && v != "" {
+				itemRegion = v
+			}
+		}
+		if service == "eds.users" {
+			itemRegion = cloud.EDSUserRegion(region)
+		}
+		idKey := map[string]string{"desktop": "DesktopId", "directory_user": "EndUserId", "bucket": "name", "security_group": "id"}[kind]
+		id, _ := item[idKey].(string)
+		details, _ := json.Marshal(item)
+		if _, err := tx.Exec(ctx, `INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id,name,details) VALUES($1,$2,'alibaba',$3,$4,$5,$6,$6,$7) ON CONFLICT(account_id,service,region,kind,provider_id) DO UPDATE SET details=excluded.details,seen_at=now()`, workspace, account, service, kind, itemRegion, id, details); err != nil {
+			return err
+		}
+		scopeRegion := itemRegion
+		if service == "oss.buckets" {
+			scopeRegion = "*"
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO sync_state(account_id,service,region,"interval",last_success_at) VALUES($1,$2,$3,interval '5 minutes',now()) ON CONFLICT(account_id,service,region) DO UPDATE SET last_success_at=now()`, account, service, scopeRegion); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 func startServiceTestWorker(t *testing.T, a *App, collect syncer.Collector) func() {
 	t.Helper()

@@ -91,11 +91,11 @@ func run(source string, apply bool) error {
 	}
 	defer tx.Rollback(ctx)
 	// Run offline. Locks prevent a concurrent API request or collector from racing the import.
-	if _, err = tx.Exec(ctx, "LOCK TABLE users,access_groups,user_groups,cloud_accounts,instances,audit_log,settings IN ACCESS EXCLUSIVE MODE"); err != nil {
+	if _, err = tx.Exec(ctx, "LOCK TABLE users,access_groups,user_groups,cloud_accounts,resources,resource_relations,instances,audit_log,settings IN ACCESS EXCLUSIVE MODE"); err != nil {
 		return fmt.Errorf("initialize the target schema with Netriun Nexus first: %w", err)
 	}
 	var count int
-	err = tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM cloud_accounts)+(SELECT count(*) FROM access_groups)+(SELECT count(*) FROM instances)+(SELECT count(*) FROM users)").Scan(&count)
+	err = tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM cloud_accounts)+(SELECT count(*) FROM access_groups)+(SELECT count(*) FROM instances)+(SELECT count(*) FROM resources)+(SELECT count(*) FROM users)").Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,12 @@ func run(source string, apply bool) error {
 			details[dest] = value
 		}
 		b, _ := json.Marshal(details)
-		if err = insert("INSERT INTO instances(id,account_id,instance_id,region,name,state,instance_type,public_ip,private_ip,details) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", number(r, "id"), number(r, "aws_account_id"), text(r, "instance_id"), text(r, "region"), text(r, "name"), text(r, "state"), text(r, "instance_type"), text(r, "public_ip"), text(r, "private_ip"), b); err != nil {
+		tags := []byte(`{}`)
+		if details["tags"] != nil {
+			tags, _ = json.Marshal(details["tags"])
+		}
+		summary, _ := json.Marshal(map[string]string{"instance_type": text(r, "instance_type"), "public_ip": text(r, "public_ip"), "private_ip": text(r, "private_ip")})
+		if err = insert("INSERT INTO resources(id,workspace_id,account_id,provider,service,kind,provider_id,region,name,state,tags,summary,details) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,'aws','compute','instance',$4,$5,$6,$7,$8,$9,$10)", number(r, "id"), workspaceID, number(r, "aws_account_id"), text(r, "instance_id"), text(r, "region"), text(r, "name"), text(r, "state"), tags, summary, b); err != nil {
 			return err
 		}
 	}
@@ -200,11 +205,11 @@ func run(source string, apply bool) error {
 		}
 	}
 	// Legacy polling intervals are intentionally ignored. Inventory is refreshed
-	// live when a service page is opened.
+	// by the background scheduler or an explicit manual refresh.
 	if err = insert("UPDATE settings SET last_collector_run_at=now() WHERE workspace_id=$1", workspaceID); err != nil {
 		return err
 	}
-	for _, table := range []string{"users", "access_groups", "cloud_accounts", "instances", "audit_log"} {
+	for _, table := range []string{"users", "access_groups", "cloud_accounts", "resources", "audit_log"} {
 		if err = resetSequence(ctx, tx, table); err != nil {
 			return err
 		}

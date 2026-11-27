@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package resources owns the resource catalog, read by the resources API;
-// compute and Alibaba service sync dual-write it alongside legacy inventory.
+// compute, Alibaba service and network sync reconcile it as the inventory source.
 // Reconcile accepts a caller-owned pgx.Tx and a complete, successful collection
 // of one Scope. Callers must fence that transaction with
 // their job lease before/after reconciliation and roll it back on any failure.
@@ -126,8 +126,8 @@ func (s *Store) Get(ctx context.Context, workspace int64, accounts []int64, id i
  COALESCE((SELECT jsonb_agg(jsonb_build_object('from_id',rr.from_id,'to_id',rr.to_id,'relation',rr.relation,
  'id',other.id,'kind',other.kind,'name',other.name) ORDER BY rr.from_id,rr.to_id,rr.relation)
  FROM resource_relations rr JOIN resources other ON other.id=CASE WHEN rr.from_id=r.id THEN rr.to_id ELSE rr.from_id END
- WHERE (rr.from_id=r.id OR rr.to_id=r.id) AND other.workspace_id=$1 AND other.account_id=ANY($2)), '[]'::jsonb)
- FROM resources r WHERE r.workspace_id=$1 AND r.account_id=ANY($2) AND r.id=$3`, workspace, accounts, id).Scan(args...)
+ WHERE (rr.from_id=r.id OR rr.to_id=r.id) AND other.workspace_id=$1 AND other.account_id=ANY($2) AND EXISTS(SELECT 1 FROM cloud_accounts a WHERE a.workspace_id=$1 AND a.id=other.account_id AND a.provider=other.provider)), '[]'::jsonb)
+ FROM resources r WHERE r.workspace_id=$1 AND r.account_id=ANY($2) AND r.id=$3 AND EXISTS(SELECT 1 FROM cloud_accounts a WHERE a.workspace_id=$1 AND a.id=r.account_id AND a.provider=r.provider)`, workspace, accounts, id).Scan(args...)
 	if err != nil {
 		return out, err
 	}

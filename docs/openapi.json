@@ -1334,7 +1334,7 @@
     },
     "/instances/{id}": {
       "get": {
-        "summary": "Cached compute instance; optional live=true queries its cloud provider",
+        "summary": "Compute instance from the resources catalog; optional live=true queries its cloud provider",
         "parameters": [
           {
             "name": "id",
@@ -1347,6 +1347,7 @@
           },
           {
             "name": "live",
+            "description": "Include live provider details after resolving the catalog resource within the workspace and account view permissions. This explicit detail request does not enqueue an inventory refresh.",
             "in": "query",
             "schema": {
               "type": "boolean"

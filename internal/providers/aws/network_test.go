@@ -3,10 +3,14 @@ package aws_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
 	"github.com/netriun/nexus/internal/providers"
 	"github.com/netriun/nexus/internal/providerstest"
-	"testing"
 )
 
 func TestNetworkRecordedResponses(t *testing.T) {
@@ -103,4 +107,31 @@ func TestNetworkRecordedResponses(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestLoadBalancerTagBatches(t *testing.T) {
+	adapter, replay := providerstest.Adapter(t, "aws")
+	raw := `<DescribeLoadBalancersResponse xmlns="http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/"><DescribeLoadBalancersResult><LoadBalancers>`
+	for i := range 41 {
+		raw += fmt.Sprintf(`<member><LoadBalancerArn>arn:lb:%d</LoadBalancerArn><LoadBalancerName>LB %d</LoadBalancerName><VpcId>vpc-1</VpcId><Type>application</Type><State><Code>active</Code></State></member>`, i, i)
+	}
+	raw += `</LoadBalancers></DescribeLoadBalancersResult></DescribeLoadBalancersResponse>`
+	encoded, _ := json.Marshal(raw)
+	replay.SetPages("DescribeLoadBalancers", encoded)
+	items, _, err := adapter.List(t.Context(), providers.Account{WorkspaceID: 17, ID: 42, Provider: "aws"}, "network", "us-east-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, item := range items {
+		if item.Kind == "load_balancer" {
+			count++
+			if item.Tags["team"] != "platform" || !strings.HasPrefix(item.ProviderID, "arn:lb:") {
+				t.Fatalf("lost batch tags: %+v", item)
+			}
+		}
+	}
+	if count != 41 || len(replay.TagBatches) != 3 || len(replay.TagBatches[0]) != 20 || len(replay.TagBatches[1]) != 20 || len(replay.TagBatches[2]) != 1 {
+		t.Fatalf("count=%d batches=%v", count, replay.TagBatches)
+	}
 }

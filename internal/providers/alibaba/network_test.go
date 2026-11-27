@@ -4,9 +4,11 @@ package alibaba_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"testing"
+
 	"github.com/netriun/nexus/internal/providers"
 	"github.com/netriun/nexus/internal/providerstest"
-	"testing"
 )
 
 func TestNetworkRecordedResponses(t *testing.T) {
@@ -103,4 +105,49 @@ func TestNetworkRecordedResponses(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestUnavailableLoadBalancerKinds(t *testing.T) {
+	for _, tc := range []struct {
+		action, code string
+		page         int
+		empty        bool
+	}{
+		{"DescribeLoadBalancers", "ORDER.OPEND", 1, true},
+		{"DescribeLoadBalancers", "OperationFailed.Endpoint", 1, true},
+		{"DescribeLoadBalancers", "InvalidProduct.NotFound", 1, true},
+		{"ListLoadBalancers", "InvalidProduct.NotFound", 1, true},
+		{"DescribeLoadBalancers", "InvalidRegion.NotFound", 1, true},
+		{"ListLoadBalancers", "InvalidRegion.NotFound", 1, true},
+		{"DescribeVpcs", "InvalidProduct.NotFound", 1, false},
+		{"ListLoadBalancers", "InvalidRegion.NotFound", 2, false},
+		{"ListLoadBalancers", "UnsupportedRegion", 1, true},
+		{"DescribeLoadBalancers", "ORDER.OPEND", 2, false},
+		{"ListLoadBalancers", "UnsupportedRegion", 2, false},
+		{"DescribeLoadBalancers", "Forbidden", 1, false},
+		{"ListLoadBalancers", "Forbidden", 1, false},
+		{"ListLoadBalancers", "ServiceUnavailable", 1, false},
+		{"DescribeLoadBalancerAttribute", "ORDER.OPEND", 1, false},
+		{"DescribeVpcs", "UnsupportedRegion", 1, false},
+	} {
+		t.Run(tc.action+"/"+tc.code+fmt.Sprint(tc.page), func(t *testing.T) {
+			adapter, replay := providerstest.Adapter(t, "alibaba")
+			replay.FailAction, replay.FailCode, replay.FailPage = tc.action, tc.code, tc.page
+			items, _, err := adapter.List(t.Context(), providers.Account{WorkspaceID: 17, ID: 42, Provider: "alibaba"}, "network", "cn-hangzhou")
+			if !tc.empty {
+				if err == nil || items != nil {
+					t.Fatalf("masked error: %v %v", items, err)
+				}
+				return
+			}
+			if err != nil || len(items) != 6 {
+				t.Fatalf("unavailable kind lost region: items=%d err=%v", len(items), err)
+			}
+			for _, item := range items {
+				if item.Kind == "load_balancer" && ((tc.action == "DescribeLoadBalancers" && item.Summary["provider_type"] == "CLB/SLB") || (tc.action == "ListLoadBalancers" && item.Summary["provider_type"] == "ALB")) {
+					t.Fatalf("unavailable kind survived: %+v", item)
+				}
+			}
+		})
+	}
 }

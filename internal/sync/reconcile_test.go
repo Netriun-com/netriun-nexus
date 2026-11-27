@@ -5,7 +5,6 @@ package sync_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	syncer "github.com/netriun/nexus/internal/sync"
@@ -163,13 +162,15 @@ func TestPayloadOwnershipAndRecreatedScope(t *testing.T) {
 	}
 }
 
-func TestPartialSnapshotIsFailure(t *testing.T) {
+// Partial adapter results are rejected before reconciliation. A retired payload
+// must not influence the catalog result, including an obsolete failure marker.
+func TestRetiredPartialSnapshotIsIgnored(t *testing.T) {
 	s, workspace, account := setup(t)
 	p := syncer.Payload{WorkspaceID: workspace, AccountID: account, Service: syncer.Buckets, Region: "*"}
 	if _, err := s.DB.Exec(t.Context(), `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload) VALUES($1,$2,$3,'',$4::jsonb)`, workspace, account, p.Service, `{"data":[],"failed_buckets":["provider-detail-must-not-be-exposed"]}`); err != nil {
 		t.Fatal(err)
 	}
-	if empty, err := s.Result(t.Context(), p, ""); err == nil || empty || fmt.Sprint(err) != "Collection was incomplete" {
+	if empty, err := s.Result(t.Context(), p, ""); err != nil || empty {
 		t.Fatalf("partial: %v %v", empty, err)
 	}
 }

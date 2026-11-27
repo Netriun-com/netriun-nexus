@@ -267,3 +267,28 @@ func TestServiceFactoryFailures(t *testing.T) {
 		t.Fatal("missing factories accepted")
 	}
 }
+
+func TestCredentialsBoundOncePerCollection(t *testing.T) {
+	for _, service := range []string{providers.OSSBuckets, providers.SecurityGroups} {
+		t.Run(service, func(t *testing.T) {
+			account := providers.Account{WorkspaceID: 17, ID: 42, Provider: "alibaba"}
+			region := "cn-hangzhou"
+			if service == providers.OSSBuckets {
+				region = "*"
+			}
+			replay := alibabatest.New(account, service, region)
+			loads := 0
+			adapter, err := alibaba.NewWithCollectionClients(replay.ECS, func(context.Context, providers.Account, string, string) (alibaba.ServiceClients, error) {
+				loads++
+				return alibaba.ServiceClients{ECS: replay.ECS, EDS: replay.EDS, OSS: replay.OSS}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			items, _, err := adapter.List(t.Context(), account, service, region)
+			if err != nil || len(items) < 2 || loads != 1 {
+				t.Fatalf("items=%d credential loads=%d err=%v", len(items), loads, err)
+			}
+		})
+	}
+}

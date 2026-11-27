@@ -26,10 +26,11 @@ type EDSClientFactory func(context.Context, providers.Account, string) (*cloud.E
 type OSSClientFactory func(context.Context, providers.Account, string) (*oss.Client, error)
 
 type servicesAdapter struct {
-	compute providers.Provider
-	ecs     ClientFactory
-	eds     EDSClientFactory
-	oss     OSSClientFactory
+	compute    providers.Provider
+	collection CollectionClientFactory
+	ecs        ClientFactory
+	eds        EDSClientFactory
+	oss        OSSClientFactory
 }
 
 // NewWithServices wraps the existing collectors for compute, desktops, directory
@@ -44,6 +45,26 @@ func NewWithServices(ecs ClientFactory, eds EDSClientFactory, oss OSSClientFacto
 		return nil, errors.New("Alibaba EDS and OSS client factories are required")
 	}
 	return &servicesAdapter{compute: compute, ecs: ecs, eds: eds, oss: oss}, nil
+}
+
+// ServiceClients contains factories bound to credentials loaded once for a collection.
+// Each factory still constructs an independent SDK client for concurrent details.
+type ServiceClients struct {
+	ECS ClientFactory
+	EDS EDSClientFactory
+	OSS OSSClientFactory
+}
+type CollectionClientFactory func(context.Context, providers.Account, string, string) (ServiceClients, error)
+
+func NewWithCollectionClients(ecs ClientFactory, factory CollectionClientFactory) (providers.Provider, error) {
+	compute, err := New(ecs)
+	if err != nil {
+		return nil, err
+	}
+	if factory == nil {
+		return nil, errors.New("Alibaba collection client factory is required")
+	}
+	return &servicesAdapter{compute: compute, collection: factory}, nil
 }
 
 func (a *servicesAdapter) Services() []providers.ServiceSpec {
@@ -67,6 +88,19 @@ func (a *servicesAdapter) List(ctx context.Context, account providers.Account, s
 	}
 	if service != providers.OSSBuckets && (region == "" || region == "*" || region == "all") {
 		return nil, nil, errors.New("Alibaba service requires a concrete region")
+	}
+	if a.collection != nil {
+		clients, err := a.collection(ctx, account, service, region)
+		if err != nil {
+			return nil, nil, err
+		}
+		bound := *a
+		bound.collection = nil
+		bound.ecs, bound.eds, bound.oss = clients.ECS, clients.EDS, clients.OSS
+		if bound.ecs == nil || bound.eds == nil || bound.oss == nil {
+			return nil, nil, errors.New("Alibaba collection returned incomplete factories")
+		}
+		return bound.List(ctx, account, service, region)
 	}
 	var items []providers.Resource
 	var err error
@@ -130,8 +164,7 @@ func (a *servicesAdapter) Get(ctx context.Context, account providers.Account, ki
 	return providers.Resource{}, fmt.Errorf("%w: %s %q", providers.ErrNotFound, kind, id)
 }
 
-// Keep the legacy item intact in details so the dual-write can emit precisely
-// the same snapshot JSON. UseNumber preserves int64 counters and directory IDs.
+// Keep the native item intact in details for compatible resource-backed lists. UseNumber preserves int64 counters and directory IDs.
 func serviceResource(kind, region, id, name, state, nativeType string, value any, summary map[string]any) (providers.Resource, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {

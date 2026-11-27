@@ -293,7 +293,7 @@ Order and owners (Saheb may reassign; one task has one owner):
 | T19 Compute sync writes `resources` | T17, T18 | Codex |
 | T20 EDS, OSS, and security groups write `resources` | T19 | Codex |
 | T22 Networks, subnets, and load balancers for Alibaba and AWS | T18, T19 | Collaborator |
-| T23 Every list reads `resources`; old writes stop | T20, T21, T22 | Codex |
+| T23 Every list reads `resources`; old writes stop | T20, T21, T22 | Collaborator |
 
 T17 and T18 can run in parallel. T21 can run in parallel with T19.
 
@@ -458,6 +458,8 @@ that a full sync produces the expected relations; a failed region keeps its
 previous network rows; the existing services are unaffected.
 
 ### T23. Every list reads `resources`; old writes stop
+
+- [x] Implemented by Collaborator — resource-backed reads, retired writes, and latency checks.
 
 Work:
 

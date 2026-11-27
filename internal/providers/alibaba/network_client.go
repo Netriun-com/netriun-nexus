@@ -13,6 +13,7 @@ import (
 	util "github.com/alibabacloud-go/darabonba-openapi/v2/utils"
 	ecs "github.com/alibabacloud-go/ecs-20140526/v7/client"
 	"github.com/alibabacloud-go/tea/dara"
+	"github.com/alibabacloud-go/tea/tea"
 	"github.com/netriun/nexus/internal/cloud"
 	"github.com/netriun/nexus/internal/providers"
 	net "github.com/netriun/nexus/internal/providers/internal/network"
@@ -110,6 +111,11 @@ func networkPages(ctx context.Context, client *openapi.Client, action, version s
 		}
 		body, err := networkCall(ctx, client, action, version, query)
 		if err != nil {
+			// Only an unavailable product before enumeration is an empty kind.
+			// Never discard a partial enumeration, or mask detail/auth errors.
+			if page == 1 && unavailableLoadBalancer(action, err) {
+				return result, nil
+			}
 			return nil, err
 		}
 		rows := networkRows(networkPath(body, path...))
@@ -136,4 +142,29 @@ func networkPages(ctx context.Context, client *openapi.Client, action, version s
 			}
 		}
 	}
+}
+
+// These exact codes are documented by the product error references. Generic
+// ServiceUnavailable, access errors and DNS/transport errors are never empty data.
+// https://api.alibabacloud.com/global-error-code
+// https://www.alibabacloud.com/help/en/slb/application-load-balancer/developer-reference/api-alb-2020-06-16-errorcodes
+// https://www.alibabacloud.com/help/en/slb/classic-load-balancer/developer-reference/api-slb-2014-05-15-errorcodes
+func unavailableLoadBalancer(action string, err error) bool {
+	var code string
+	var coded interface{ GetCode() *string }
+	var sdk *tea.SDKError
+	if errors.As(err, &coded) && coded.GetCode() != nil {
+		code = *coded.GetCode()
+	} else if errors.As(err, &sdk) && sdk.Code != nil {
+		code = *sdk.Code
+	} else {
+		return false
+	}
+	if action != "ListLoadBalancers" && action != "DescribeLoadBalancers" {
+		return false
+	}
+	if code == "InvalidProduct.NotFound" || code == "InvalidRegion.NotFound" {
+		return true
+	}
+	return action == "ListLoadBalancers" && code == "UnsupportedRegion" || action == "DescribeLoadBalancers" && (code == "ORDER.OPEND" || code == "OperationFailed.Endpoint")
 }

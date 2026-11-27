@@ -96,7 +96,7 @@ func (s *Store) List(ctx context.Context, workspace int64, accounts []int64, fil
 // bound, and LIKE metacharacters are escaped so q means a literal substring.
 func listQuery(workspace int64, accounts []int64, filter Filter, cursor pageCursor, limit int) (string, []any) {
 	args := []any{workspace, accounts, cursor.Ceiling}
-	query := `SELECT ` + columns + ` FROM resources r WHERE r.workspace_id=$1 AND r.account_id=ANY($2) AND r.id<=$3`
+	query := `SELECT ` + columns + ` FROM resources r WHERE r.workspace_id=$1 AND r.account_id=ANY($2) AND r.id<=$3 AND EXISTS(SELECT 1 FROM cloud_accounts a WHERE a.workspace_id=$1 AND a.id=r.account_id AND a.provider=r.provider)`
 	for _, part := range []struct{ column, value string }{{"kind", filter.Kind}, {"service", filter.Service}, {"region", filter.Region}, {"state", filter.State}} {
 		if part.value != "" {
 			args = append(args, part.value)
