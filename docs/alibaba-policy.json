@@ -14,6 +14,24 @@
     {
       "Effect": "Allow",
       "Action": [
+        "vpc:DescribeVpcs",
+        "vpc:DescribeVSwitches",
+        "slb:DescribeLoadBalancers",
+        "slb:DescribeLoadBalancerAttribute",
+        "slb:DescribeVServerGroups",
+        "slb:DescribeVServerGroupAttribute",
+        "slb:DescribeMasterSlaveServerGroups",
+        "slb:DescribeMasterSlaveServerGroupAttribute",
+        "alb:ListLoadBalancers",
+        "alb:ListListeners",
+        "alb:ListRules",
+        "alb:ListServerGroupServers"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "ecs:AuthorizeSecurityGroup",
         "ecs:AuthorizeSecurityGroupEgress",
         "ecs:RevokeSecurityGroup",

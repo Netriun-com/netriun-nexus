@@ -26,8 +26,8 @@ The previous milestone plan (M0 to M10) is archived in
 | 1. Stabilize | Releasable image, honest docs, safe Codex workflow, loading hotfix | CVEs block releases; page flicker | Done |
 | 2. Extract licensing | Licensing leaves the runtime; entitlements ready for the Netriun Commercial Platform | Licensing coupling | In progress (T8 left) |
 | 3. Durable jobs and sync | Background scheduler, durable job queue, `nexus worker` role | Sync on page view; lost jobs; one account blocks others | Done |
-| 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | **Current** (tasks written) |
-| 5. Live updates | SSE stream, row patches | Full page re-render | Planned |
+| 4. One resource model | `resources` + `resource_relations`, `/api/v1/resources` | Two data models; unindexed search | Done |
+| 5. Live updates | SSE stream, row patches | Full page re-render | **Current** (tasks written) |
 | 6. Frontend rebuild | React + TypeScript + Vite UI on a typed client | 167KB single-file UI | Planned |
 | 7. Orchestration and approvals | Engine, approvals, the five workflows, topology | Product vision | Planned |
 | 8. CLI and API tokens | `nexusctl` and personal API tokens | CLI capability | Planned |
@@ -84,15 +84,15 @@ not delay other accounts.
 
 ## Phase 4 — One resource model
 
-- [ ] `resources` and `resource_relations` tables with the indexes in the
+- [x] `resources` and `resource_relations` tables with the indexes in the
   architecture (including `pg_trgm`).
-- [ ] Sync writes instances, then EDS, OSS, and security groups, into
+- [x] Sync writes instances, then EDS, OSS, and security groups, into
   `resources`; `service_snapshots` is no longer written.
-- [ ] Alibaba and AWS sync networks, subnets, security groups, and load
+- [x] Alibaba and AWS sync networks, subnets, security groups, and load
   balancers with relations.
-- [ ] `GET /api/v1/resources` and `GET /api/v1/resources/{id}` with cursor
+- [x] `GET /api/v1/resources` and `GET /api/v1/resources/{id}` with cursor
   pagination, documented in `docs/openapi.json`.
-- [ ] Provider adapters behind the `Provider` interface in
+- [x] Provider adapters behind the `Provider` interface in
   `providers/{aws,alibaba,azure,gcp}` with recorded-response tests.
 
 Exit: every list in the UI reads from `resources` in under one second.
