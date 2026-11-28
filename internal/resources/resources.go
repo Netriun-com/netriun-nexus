@@ -6,6 +6,10 @@
 // of one Scope. Callers must fence that transaction with
 // their job lease before/after reconciliation and roll it back on any failure.
 // A failed provider collection must never be passed as an empty successful one.
+// Migration 019 captures durable resource events transactionally, including
+// relation deltas, and sends one ID-only wakeup per workspace at commit. Leave
+// the notification constraint trigger deferred. Relation-only events reuse the
+// content version; consumers must not discard them solely on version equality.
 //
 // Outgoing relations belong to the reconciled scope; other incoming relations
 // remain unless an endpoint is deleted. References are account-local and missing

@@ -16,6 +16,8 @@ sync:
   discoveryIntervalSeconds: 3600
   # Per-workspace audit cleanup cadence; uses settings.audit_retention_days.
   auditRetentionIntervalSeconds: 86400
+  # Durable resource/sync event replay window; cleaned by the daily retention job.
+  eventRetentionSeconds: 86400
   jobRetentionSeconds: 604800
 
 # These limits also configure the combined Deployment when enabled is false.

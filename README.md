@@ -338,6 +338,7 @@ use the same values in all processes. Compose passes these settings through.
 | `NEXUS_SYNC_RECONCILE_INTERVAL` | `1m` | Database reconciliation, discovery due-time polling, and retention cleanup |
 | `NEXUS_SYNC_DISCOVERY_INTERVAL` | `1h` | Provider region discovery per all-regions account |
 | `NEXUS_AUDIT_RETENTION_INTERVAL` | `24h` | Per-workspace audit cleanup schedule |
+| `NEXUS_EVENT_RETENTION` | `24h` | Durable resource/sync event retention; cleaned by the daily workspace retention job |
 | `NEXUS_JOB_RETENTION` | `168h` | Terminal job retention (7 days) |
 
 Service lists show **Last synced** per account/region, plain-language errors, and
@@ -426,6 +427,36 @@ per-workspace dedupe and concurrency key. The handler reads
 500 rows, checking its job lease before committing each batch. Newer rows stay;
 locked rows are left for the next run. Queue retries safely resume partial work.
 The Helm setting is `sync.auditRetentionIntervalSeconds` (default `86400`).
+
+Catalog changes also write durable `resource_events` in the same transaction.
+Created, changed, and deleted resources emit their IDs and versions; a change
+only to `seen_at` emits nothing. Relation additions/removals emit
+`resource.updated` for surviving source resources, using the existing content
+version. A source can have more than one invalidation when edges are both added
+and removed. No resource details, credentials, or provider error bodies are
+stored in events. `sync.started` and `sync.finished` accompany their sync-state
+transactions; finished events carry a success flag and the safe error code.
+A failed collection emits no resource events, but does record its lifecycle
+failure if it still owns the lease. A lost attempt cannot commit catalog events
+or a finish event; its earlier committed start remains in the history.
+
+Migration 019 installs statement triggers to capture catalog changes, including
+relation cascades, and a deferred trigger that sends one PostgreSQL
+`NOTIFY nexus_events` per workspace at commit, containing only
+`workspace_id:max_event_id`. Event IDs are allocated under a workspace
+transaction lock so later commits cannot appear behind a replay cursor.
+Keep that trigger deferred until commit. The lock covers database writes only,
+never provider collection. Rolled-back changes produce neither events nor
+notifications. `resource_id` has no foreign key so delete events remain readable;
+deleting the account cascades its event history.
+
+The daily `audit.retention` job also removes event history older than
+`NEXUS_EVENT_RETENTION` (default `24h`, Helm `sync.eventRetentionSeconds: 86400`)
+in separate lease-fenced batches of 500. Retention is a cleanup threshold, not
+an exact expiration time: rows remain until the next daily run, and locked rows
+wait for a later run. There is no event stream or browser subscription yet;
+those arrive in T25/T26. Upgrades do not generate events for existing catalog
+rows until those rows or their relations change.
 
 EDS desktop/user, OSS, and security-group refresh endpoints also enqueue these
 same durable jobs, promote queued jobs, join running jobs, and keep the existing

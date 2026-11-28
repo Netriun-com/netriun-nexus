@@ -64,7 +64,7 @@ func (s *Store) ReconcileNetwork(ctx context.Context, p Payload, items []provide
 	scope := resources.Scope{WorkspaceID: p.WorkspaceID, AccountID: p.AccountID, Provider: provider, Service: Network, Region: p.Region}
 	for _, kind := range []string{"network", "subnet", "load_balancer"} {
 		scope.Kind = kind
-		if err := resources.Reconcile(ctx, tx, scope, grouped[kind], nil); err != nil {
+		if err := resources.ReconcileItems(ctx, tx, scope, grouped[kind]); err != nil {
 			return err
 		}
 	}
