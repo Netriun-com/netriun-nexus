@@ -1,7 +1,7 @@
 # Current tasks
 
-Phase: **4 — One resource model** (see [docs/roadmap.md](docs/roadmap.md)). Phase 2 still has T8 open.
-Written: 2026-10-30 (phases 1–2), 2026-11-09 (phase 3), 2026-11-16 (phase 4).
+Phase: **5 — Live updates** (see [docs/roadmap.md](docs/roadmap.md)). Phase 2 still has T8 open.
+Written: 2026-10-30 (phases 1–2), 2026-11-09 (phase 3), 2026-11-16 (phase 4), 2026-11-28 (phase 5).
 
 Read first: [docs/spec-v2.md](docs/spec-v2.md) and
 [docs/architecture-v2.md](docs/architecture-v2.md).
@@ -25,8 +25,8 @@ Read first: [docs/spec-v2.md](docs/spec-v2.md) and
 
 ## Starting point
 
-Phases 1 and 3 are done. Phase 4 starts with **T17** and **T18** in parallel
-(see the order table in phase 4). T8 waits for Saheb's confirmation.
+Phases 1, 3, and 4 are done. Phase 5 starts with **T24** and **T27** in parallel
+(see the order table in phase 5). T8 waits for Saheb's confirmation.
 
 ---
 
