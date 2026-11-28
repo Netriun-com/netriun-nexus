@@ -16,12 +16,10 @@ func (s *Store) recordResult(ctx context.Context, p Payload, j jobs.Job, message
 		return err
 	}
 	defer tx.Rollback(context.Background())
-	// Serialize the account summary with other regional completions and saves.
-	if p.Service == Compute {
-		var id int64
-		if err := tx.QueryRow(ctx, `SELECT id FROM cloud_accounts WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, p.AccountID, p.WorkspaceID).Scan(&id); err != nil {
-			return err
-		}
+	// Match the account -> lease -> state lock order used by catalog writers.
+	var id int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM cloud_accounts WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, p.AccountID, p.WorkspaceID).Scan(&id); err != nil {
+		return err
 	}
 	if err := jobs.CheckLeaseTx(ctx, tx, j); err != nil {
 		return err
@@ -44,6 +42,10 @@ func (s *Store) recordResult(ctx context.Context, p Payload, j jobs.Job, message
 		if _, err := tx.Exec(ctx, `UPDATE settings SET last_collector_run_at=clock_timestamp() WHERE workspace_id=$1`, p.WorkspaceID); err != nil {
 			return err
 		}
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO resource_events(workspace_id,account_id,type,service,region,success,error_code)
+ VALUES($1,$2,'sync.finished',$3,$4,$5,$6)`, p.WorkspaceID, p.AccountID, p.Service, p.Region, code == "", code); err != nil {
+		return err
 	}
 	if err := jobs.CheckLeaseTx(ctx, tx, j); err != nil {
 		return err

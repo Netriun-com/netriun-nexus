@@ -330,7 +330,8 @@ Rules for this phase, in addition to "Rules for every task":
 
 ### T24. Write durable change events with every catalog change
 
-- [ ] Not started
+- [x] Implemented: transactional resource/relation and sync lifecycle events,
+  commit-time ID-only notifications, and daily event retention (migration 019).
 
 Work:
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/netriun/nexus/internal/jobs"
+	"github.com/netriun/nexus/internal/resources"
 	"github.com/netriun/nexus/internal/worker"
 )
 
@@ -80,6 +81,15 @@ func (s *Store) AuditRetentionHandler() worker.Handler {
 		}
 		for {
 			n, err := s.deleteAuditBatch(ctx, j, p.WorkspaceID)
+			if err != nil {
+				return err
+			}
+			if n < auditRetentionBatch {
+				break
+			}
+		}
+		for {
+			n, err := s.deleteEventBatch(ctx, j, p.WorkspaceID)
 			if err != nil || n < auditRetentionBatch {
 				return err
 			}
@@ -108,4 +118,24 @@ func (s *Store) deleteAuditBatch(ctx context.Context, j jobs.Job, workspace int6
 		return 0, err
 	}
 	return tag.RowsAffected(), tx.Commit(ctx)
+}
+
+// Event retention shares the daily workspace job, with independent short batches.
+func (s *Store) deleteEventBatch(ctx context.Context, j jobs.Job, workspace int64) (int64, error) {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(context.Background())
+	if err := jobs.CheckLeaseTx(ctx, tx, j); err != nil {
+		return 0, err
+	}
+	n, err := resources.DeleteExpiredEvents(ctx, tx, workspace, s.Config.EventRetention, auditRetentionBatch)
+	if err != nil {
+		return 0, err
+	}
+	if err := jobs.CheckLeaseTx(ctx, tx, j); err != nil {
+		return 0, err
+	}
+	return n, tx.Commit(ctx)
 }

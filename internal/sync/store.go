@@ -108,12 +108,8 @@ func (s *Store) Handler(collect Collector) worker.Handler {
 			return errors.New("Invalid scheduled sync payload")
 		}
 		ac := Account{ID: p.AccountID, WorkspaceID: p.WorkspaceID}
-		err := s.DB.QueryRow(ctx, `UPDATE sync_state s SET last_started_at=clock_timestamp(),last_job_id=$1,last_attempt=$2
-            FROM cloud_accounts a,jobs j WHERE s.id=$3 AND s.account_id=$4 AND s.service=$5 AND s.region=$6 AND s.enabled AND NOT(s.region='*' AND s.service IN ('eds.users','ecs.security_groups'))
-            AND a.id=s.account_id AND a.workspace_id=$7 AND j.id=$1 AND j.attempts=$2 AND j.locked_by=$8
-            AND j.status='running' AND j.locked_until>clock_timestamp()
-            RETURNING a.provider,a.regions`, j.ID, j.Attempts, p.StateID, p.AccountID, p.Service, p.Region, p.WorkspaceID, j.LockedBy).Scan(&ac.Provider, &ac.Regions)
-		if errors.Is(err, pgx.ErrNoRows) {
+		err := s.recordStart(ctx, p, j, &ac)
+		if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, jobs.ErrLeaseLost) {
 			return nil
 		} // obsolete/disabled scope, or lost lease
 		if err != nil {

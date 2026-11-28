@@ -113,6 +113,7 @@ All `sync` values are positive integer seconds, rendered as Go durations:
 | `sync.tickIntervalSeconds` | `NEXUS_SYNC_TICK_INTERVAL` | 10 |
 | `sync.reconcileIntervalSeconds` | `NEXUS_SYNC_RECONCILE_INTERVAL` | 60 |
 | `sync.discoveryIntervalSeconds` | `NEXUS_SYNC_DISCOVERY_INTERVAL` | 3600 |
+| `sync.eventRetentionSeconds` | `NEXUS_EVENT_RETENTION` | 86400 |
 | `sync.jobRetentionSeconds` | `NEXUS_JOB_RETENTION` | 604800 |
 
 Use the same settings for web/account saves and every worker replica. The `*`
@@ -133,6 +134,13 @@ old terminal jobs, in batches of 500.
 worker/all roles schedule and execute these durable jobs; serve never does.
 Each job uses the workspace's `settings.audit_retention_days` and deletes expired
 audit rows in batches of at most 500. No cloud accounts or refreshes are needed.
+
+The same daily job cleans durable resource/sync events in separate lease-fenced
+batches of 500. `sync.eventRetentionSeconds` (default `86400`, emitted as
+`NEXUS_EVENT_RETENTION`) sets the age threshold; cleanup happens on the next
+scheduled run, rather than exactly at expiry. `serve` never runs cleanup.
+Events and ID-only PostgreSQL notifications are persisted transactionally; the
+HTTP event stream and browser subscription are separate T25/T26 work.
 
 Reconciliation migrates legacy users/security-group `*` scopes and preserves
 stored snapshot history. Users jobs no longer refresh desktops. All manual
