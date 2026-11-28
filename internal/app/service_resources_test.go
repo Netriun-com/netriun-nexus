@@ -52,30 +52,36 @@ func serviceResourcesSnapshot(t *testing.T, a *App, account int64) string {
 
 func assertServiceResourcesParity(t *testing.T, a *App, workspace, account int64, service, kind, region, idKey string, count int) {
 	t.Helper()
-	var equal, identity bool
+	var identity bool
 	var n int
-	err := a.DB.QueryRow(t.Context(), `SELECT
- (SELECT COALESCE(jsonb_agg(item ORDER BY item::text),'[]') FROM service_snapshots s,
- jsonb_array_elements(s.payload->'data') item WHERE s.workspace_id=$1 AND s.account_id=$2 AND s.service_key=$3 AND s.region=$4)
- = COALESCE(jsonb_agg(r.details ORDER BY r.details::text),'[]'),
- count(*),COALESCE(bool_and(r.provider='alibaba' AND r.provider_id=r.details->>$6
- AND r.region=CASE WHEN $3='eds.users' THEN $4 ELSE COALESCE(r.details->>'RegionId',r.details->>'region') END),true)
- FROM resources r WHERE r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3 AND r.kind=$5 AND ($4='*' OR r.region=$4)`, workspace, account, service, region, kind, idKey).Scan(&equal, &n, &identity)
-	if err != nil || !equal || !identity || n != count {
-		t.Fatalf("%s parity=%v identity=%v count=%d want=%d err=%v", service, equal, identity, n, count, err)
+	err := a.DB.QueryRow(t.Context(), `SELECT count(*),COALESCE(bool_and(provider='alibaba' AND provider_id=details->>$6 AND region=CASE WHEN $3='eds.users' THEN $4 ELSE COALESCE(details->>'RegionId',details->>'region') END),true) FROM resources WHERE workspace_id=$1 AND account_id=$2 AND service=$3 AND kind=$5 AND ($4='*' OR region=$4)`, workspace, account, service, region, kind, idKey).Scan(&n, &identity)
+	if err != nil || !identity || n != count {
+		t.Fatalf("catalog identity=%v count=%d want=%d err=%v", identity, n, count, err)
 	}
-	var shape bool
-	field := "failed_regions"
-	if service == syncer.Buckets {
-		field = "failed_buckets"
+	payload, exists, err := a.Sync.ServiceSnapshot(t.Context(), workspace, account, service, region)
+	if err != nil || !exists {
+		t.Fatalf("snapshot read: %v %v", payload, err)
 	}
-	err = a.DB.QueryRow(t.Context(), `SELECT CASE WHEN $3='eds.users' THEN NOT(payload ? 'failed_regions') ELSE payload->$5='[]'::jsonb END FROM service_snapshots WHERE workspace_id=$1 AND account_id=$2 AND service_key=$3 AND region=$4`, workspace, account, service, region, field).Scan(&shape)
-	if err != nil || !shape {
-		t.Fatalf("snapshot shape: %v %v", shape, err)
+	if service == syncer.Users {
+		if _, ok := payload["failed_regions"]; ok {
+			t.Fatal("users acquired failed_regions")
+		}
+	} else {
+		field := "failed_regions"
+		if service == syncer.Buckets {
+			field = "failed_buckets"
+		}
+		if len(payload[field].([]string)) != 0 {
+			t.Fatalf("snapshot shape: %v", payload)
+		}
+	}
+	var legacy int
+	if err := a.DB.QueryRow(t.Context(), `SELECT count(*) FROM service_snapshots WHERE account_id=$1`, account).Scan(&legacy); err != nil || legacy != 0 {
+		t.Fatalf("legacy writes: %d %v", legacy, err)
 	}
 }
 
-func TestServiceResourcesRecordedDualWrite(t *testing.T) {
+func TestServiceResourcesRecordedCatalog(t *testing.T) {
 	for _, tc := range []struct{ service, kind, region, idKey string }{
 		{syncer.Desktops, providers.Desktop, "cn-hangzhou", "DesktopId"},
 		{syncer.Users, providers.DirectoryUser, "cn-shanghai", "EndUserId"},

@@ -153,12 +153,12 @@ func TestServiceLeaseFencingAndFailurePreservesSnapshot(t *testing.T) {
 			}
 			var value, code string
 			var empty, success bool
-			if err := s.DB.QueryRow(t.Context(), `SELECT ss.payload->'data'->0->>'id',st.last_error_code,st.empty,st.last_success_at IS NOT NULL FROM sync_state st JOIN service_snapshots ss ON ss.account_id=st.account_id AND ss.service_key=st.service AND ss.region=st.region WHERE st.account_id=$1`, account).Scan(&value, &code, &empty, &success); err != nil {
+			if err := s.DB.QueryRow(t.Context(), `SELECT r.details->>'id',st.last_error_code,st.empty,st.last_success_at IS NOT NULL FROM sync_state st JOIN resources r ON r.account_id=st.account_id AND r.service=st.service WHERE st.account_id=$1`, account).Scan(&value, &code, &empty, &success); err != nil {
 				t.Fatal(err)
 			}
 			var catalogValue string
 			var same bool
-			if err := s.DB.QueryRow(t.Context(), `SELECT r.provider_id,r.details=ss.payload->'data'->0 FROM resources r JOIN service_snapshots ss ON ss.workspace_id=r.workspace_id AND ss.account_id=r.account_id AND ss.service_key=r.service WHERE r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3`, workspace, account, scope.service).Scan(&catalogValue, &same); err != nil {
+			if err := s.DB.QueryRow(t.Context(), `SELECT r.provider_id,r.details->>'id'=r.provider_id FROM resources r WHERE r.workspace_id=$1 AND r.account_id=$2 AND r.service=$3`, workspace, account, scope.service).Scan(&catalogValue, &same); err != nil {
 				t.Fatal(err)
 			}
 			if catalogValue != "fresh" || !same {
@@ -250,7 +250,7 @@ func TestServiceRegionalUpgradePreservesHistory(t *testing.T) {
 		{syncer.Users, "cn-hangzhou", `{"data":[{"EndUserId":"mainland-user"}]}`},
 		{syncer.Desktops, "all", `{"data":[{"DesktopId":"ecd-old","RegionId":"cn-hangzhou"}],"failed_regions":[]}`},
 	} {
-		if _, err := s.DB.Exec(t.Context(), `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload,fetched_at) VALUES($1,$2,$3,$4,$5,$6)`, workspace, account, fixture.service, fixture.region, fixture.payload, old); err != nil {
+		if _, err := s.DB.Exec(t.Context(), `INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id,details,seen_at) SELECT $1,$2,'alibaba',$3,CASE $3 WHEN 'eds.users' THEN 'directory_user' WHEN 'eds.desktops' THEN 'desktop' ELSE 'security_group' END,CASE WHEN $3='eds.users' THEN 'cn-shanghai' ELSE COALESCE(item->>'region',item->>'RegionId') END,COALESCE(item->>'id',item->>'DesktopId',item->>'EndUserId'),item,$6 FROM jsonb_array_elements(($5::jsonb)->'data') item WHERE $4::text IS NOT NULL`, workspace, account, fixture.service, fixture.region, fixture.payload, old); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -273,7 +273,7 @@ func TestServiceRegionalUpgradePreservesHistory(t *testing.T) {
 		t.Fatalf("legacy scopes remain: %v", current)
 	}
 	snapshot, exists, err := s.ServiceSnapshot(t.Context(), workspace, account, syncer.SecurityGroups, "")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 2 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 2 {
 		t.Fatalf("aggregate lost old groups: %+v %v", snapshot, err)
 	}
 	if err := s.Reconcile(t.Context(), nil); err != nil {
@@ -284,7 +284,7 @@ func TestServiceRegionalUpgradePreservesHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, exists, err = s.ServiceSnapshot(t.Context(), workspace, account, syncer.SecurityGroups, "")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 2 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 2 {
 		t.Fatalf("disabled scope hid data: %+v %v", snapshot, err)
 	}
 	// Region edits preserve OSS identity and a directory shared by both CN regions.
@@ -364,12 +364,12 @@ func TestUpgradeUsesKnownRegionsBeforeNextDiscovery(t *testing.T) {
 	for _, scope := range []struct{ service, region string }{{syncer.Compute, "cn-hangzhou"}, {syncer.Desktops, "cn-hangzhou"}, {syncer.Users, "*"}, {syncer.SecurityGroups, "*"}} {
 		serviceState(t, s, account, scope.service, scope.region)
 	}
-	if _, err := s.DB.Exec(t.Context(), `INSERT INTO service_snapshots(workspace_id,account_id,service_key,region,payload) VALUES($1,$2,'eds.desktops','all','{"data":[{"DesktopId":"old","RegionId":"cn-hangzhou"}],"failed_regions":[]}')`, workspace, account); err != nil {
+	if _, err := s.DB.Exec(t.Context(), `INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id,details) VALUES($1,$2,'alibaba','eds.desktops','desktop','cn-hangzhou','old','{"DesktopId":"old","RegionId":"cn-hangzhou"}')`, workspace, account); err != nil {
 		t.Fatal(err)
 	}
 	// Reads must preserve aggregate-only historical rows even before reconcile.
 	snapshot, exists, err := s.ServiceSnapshot(t.Context(), workspace, account, syncer.Desktops, "all")
-	if err != nil || !exists || len(snapshot["data"].([]json.RawMessage)) != 1 {
+	if err != nil || !exists || snapshotItemCount(t, snapshot) != 1 {
 		t.Fatalf("legacy data unavailable: %+v %v", snapshot, err)
 	}
 	if err := s.Reconcile(t.Context(), nil); err != nil {
@@ -379,4 +379,17 @@ func TestUpgradeUsesKnownRegionsBeforeNextDiscovery(t *testing.T) {
 	if got["eds.users:*"] != 0 || got["ecs.security_groups:*"] != 0 || got["eds.users:cn-shanghai"] == 0 || got["ecs.security_groups:cn-hangzhou"] == 0 {
 		t.Fatalf("known scopes not reused: %v", got)
 	}
+}
+
+func snapshotItemCount(t *testing.T, snapshot map[string]any) int {
+	t.Helper()
+	raw, err := json.Marshal(snapshot["data"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		t.Fatal(err)
+	}
+	return len(items)
 }

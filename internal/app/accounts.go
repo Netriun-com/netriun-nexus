@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/netriun/nexus/internal/entitlements"
+	"github.com/netriun/nexus/internal/resources"
 )
 
 type Credentials struct {
@@ -53,7 +54,26 @@ func (a *App) accounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ids := mergeAccountIDs(viewIDs, manageIDs)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count,a.id=ANY($3) AS can_manage FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE a.workspace_id=$1 AND a.id=ANY($2) ORDER BY a.name) t`, u.WorkspaceID, ids, manageIDs)
+	rows, err := resources.New(a.DB).AccountsWithInventory(r.Context(), u.WorkspaceID, ids, manageIDs, viewIDs)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	defer rows.Close()
+	data := []json.RawMessage{}
+	for rows.Next() {
+		var raw json.RawMessage
+		if err := rows.Scan(&raw); err != nil {
+			dbError(w, err)
+			return
+		}
+		data = append(data, raw)
+	}
+	if err := rows.Err(); err != nil {
+		dbError(w, err)
+		return
+	}
+	write(w, 200, map[string]any{"data": data})
 }
 func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var in accountInput
@@ -172,8 +192,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 		defer tx.Rollback(r.Context())
 		_, err = tx.Exec(r.Context(), "UPDATE cloud_accounts SET name=$1,provider=$2,owner=$3,group_id=$4,credentials=$5,regions=$6,last_sync_at=CASE WHEN $9 THEN NULL ELSE last_sync_at END,sync_error=CASE WHEN $9 THEN '' ELSE sync_error END,sync_error_code=CASE WHEN $9 THEN '' ELSE sync_error_code END WHERE id=$7 AND workspace_id=$8", in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions, id, current(r).WorkspaceID, credentialsChanged)
 		if err == nil && existingProvider != in.Provider {
-			_, err = tx.Exec(r.Context(), "DELETE FROM instances WHERE account_id=$1", id)
-			if err == nil && a.Sync != nil {
+			if a.Sync != nil {
 				err = a.Sync.ResetAccountTx(r.Context(), tx, id)
 			}
 		}

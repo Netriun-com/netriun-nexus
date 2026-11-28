@@ -6,11 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	ecs "github.com/alibabacloud-go/ecs-20140526/v7/client"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/netriun/nexus/internal/cloud"
 	"net/http"
 	"time"
+
+	ecs "github.com/alibabacloud-go/ecs-20140526/v7/client"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/jackc/pgx/v5"
+	"github.com/netriun/nexus/internal/cloud"
+	"github.com/netriun/nexus/internal/resources"
 )
 
 func (a *App) instances(w http.ResponseWriter, r *http.Request) {
@@ -33,16 +36,30 @@ func (a *App) instances(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, result)
 }
 func (a *App) instanceTarget(r *http.Request, id int64, mode string) (int64, string, string, string, error) {
-	var accountID int64
-	var iid, region, provider string
-	err := a.DB.QueryRow(r.Context(), "SELECT i.account_id,i.instance_id,i.region,a.provider FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE i.id=$1 AND a.workspace_id=$2", id, current(r).WorkspaceID).Scan(&accountID, &iid, &region, &provider)
+	capability, err := capabilityForMode(mode)
 	if err != nil {
 		return 0, "", "", "", err
 	}
-	if !a.accountAccess(r, accountID, mode) {
+	ids, err := a.Policy.AccessibleAccountIDs(r.Context(), current(r), capability)
+	if err != nil {
+		return 0, "", "", "", err
+	}
+	resource, err := resources.New(a.DB).Get(r.Context(), current(r).WorkspaceID, ids, id)
+	// Preserve the forbidden response without probing an inaccessible account.
+	// Missing IDs are equally opaque for non-administrators.
+	if errors.Is(err, pgx.ErrNoRows) && current(r).Role != "admin" {
 		return 0, "", "", "", errForbidden
 	}
-	return accountID, iid, region, provider, nil
+	if err != nil {
+		return 0, "", "", "", err
+	}
+	if resource.Service != "compute" || resource.Kind != "instance" {
+		return 0, "", "", "", pgx.ErrNoRows
+	}
+	if !a.accountAccess(r, resource.AccountID, mode) {
+		return 0, "", "", "", errForbidden
+	}
+	return resource.AccountID, resource.ProviderID, resource.Region, resource.Provider, nil
 }
 
 type accessError string
@@ -108,8 +125,12 @@ func (a *App) instance(w http.ResponseWriter, r *http.Request) {
 		dbError(w, err)
 		return
 	}
-	var raw json.RawMessage
-	err = a.DB.QueryRow(r.Context(), "SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE i.id=$1 AND a.workspace_id=$2) t", id, current(r).WorkspaceID).Scan(&raw)
+	ids, err := a.Policy.AccessibleAccountIDs(r.Context(), current(r), CapabilityAccountView)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	raw, err := resources.New(a.DB).Instance(r.Context(), current(r).WorkspaceID, ids, id)
 	if err != nil {
 		dbError(w, err)
 		return
@@ -221,19 +242,6 @@ func (a *App) action(w http.ResponseWriter, r *http.Request) {
 		a.audit(r, "instance."+in.Action+".failed", iid, nil)
 		problem(w, 502, "Cloud provider rejected the action; check instance state and permissions")
 		return
-	}
-	state := ""
-	if in.Action == "start" {
-		state = "pending"
-		if provider == "alibaba" {
-			state = "starting"
-		}
-	}
-	if in.Action == "stop" {
-		state = "stopping"
-	}
-	if state != "" {
-		a.DB.Exec(r.Context(), "UPDATE instances SET state=$1 WHERE id=$2", state, id)
 	}
 	a.audit(r, "instance."+in.Action+".accepted", iid, nil)
 	write(w, 202, map[string]string{"status": "accepted", "action": in.Action, "instance_id": iid})

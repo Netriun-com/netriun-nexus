@@ -52,7 +52,7 @@ func TestMigration(t *testing.T) {
  INSERT INTO users VALUES(7,'legacyadmin','` + strings.Replace(string(hash), "$2a$", "$2y$", 1) + `','admin');
  INSERT INTO access_groups VALUES(4,'Legacy group','Imported','{"view_dashboard":true}'); INSERT INTO user_groups VALUES(7,4,'group_admin');
  INSERT INTO aws_accounts VALUES(3,'Legacy AWS','Owner',4,'testkey','testsecret');
- INSERT INTO ec2_instances VALUES(8,3,'i-test','us-east-1','Test','running','t3.micro','','',NULL,'vpc-test','subnet-test','','{}','[]');
+ INSERT INTO ec2_instances VALUES(8,3,'i-test','us-east-1','Test','running','t3.micro','','',NULL,'vpc-test','subnet-test','','{"Name":"legacy-node"}','[]');
  INSERT INTO logs VALUES(1,'2026-01-01 00:00:00','legacy.action','details',7);
  INSERT INTO app_settings VALUES('collector_interval_minutes','60');`
 	cmd := exec.Command("sqlite3", source)
@@ -98,6 +98,14 @@ func TestMigration(t *testing.T) {
 	}
 	if err = bcrypt.CompareHashAndPassword([]byte(password), []byte("legacy-password")); err != nil {
 		t.Fatal("legacy PHP bcrypt login failed")
+	}
+	var imported bool
+	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM resources WHERE workspace_id=$1 AND account_id=3 AND id=8 AND service='compute' AND kind='instance' AND provider_id='i-test' AND summary->>'instance_type'='t3.micro' AND details->>'vpc_id'='vpc-test' AND tags->>'Name'='legacy-node') AND NOT EXISTS(SELECT 1 FROM instances)`, workspaceID).Scan(&imported); err != nil || !imported {
+		t.Fatalf("catalog import: %v %v", imported, err)
+	}
+	var resourceID int64
+	if err := db.QueryRow(ctx, `INSERT INTO resources(workspace_id,account_id,provider,service,kind,region,provider_id) VALUES($1,3,'aws','compute','instance','us-east-1','next') RETURNING id`, workspaceID).Scan(&resourceID); err != nil || resourceID != 9 {
+		t.Fatalf("resource sequence: %d %v", resourceID, err)
 	}
 	var next int64
 	if err = db.QueryRow(ctx, "INSERT INTO users(workspace_id,username,password_hash,role) VALUES($1,'next','unused','user') RETURNING id", workspaceID).Scan(&next); err != nil {

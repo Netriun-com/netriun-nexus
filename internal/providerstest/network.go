@@ -31,6 +31,8 @@ var fixtures embed.FS
 type Replay struct {
 	Provider     string
 	Empty        bool
+	FailCode     string
+	TagBatches   [][]string
 	FailAction   string
 	FailPage     int
 	RepeatAction string
@@ -126,7 +128,12 @@ func (r *Replay) RoundTrip(req *http.Request) (*http.Response, error) {
 		if r.Provider == "aws" {
 			body = `<Response><Errors><Error><Code>UnauthorizedOperation</Code><Message>fixture access denied</Message></Error></Errors><RequestID>fixture</RequestID></Response>`
 		} else {
-			body = `{"Code":"Forbidden","Message":"fixture access denied","RequestId":"fixture"}`
+			code := r.FailCode
+			if code == "" {
+				code = "Forbidden"
+			}
+			raw, _ := json.Marshal(map[string]string{"Code": code, "Message": "fixture error", "RequestId": "fixture"})
+			body = string(raw)
 		}
 	} else if r.Provider == "aws" {
 		if err := json.Unmarshal(pages[page-1], &body); err != nil {
@@ -172,6 +179,23 @@ func (r *Replay) RoundTrip(req *http.Request) (*http.Response, error) {
 	if lb == "" {
 		lb = query.Get("ResourceArns.member.1")
 	}
+	if action == "DescribeTags" && status == 200 {
+		arns := []string{}
+		members := ""
+		for i := 1; ; i++ {
+			arn := query.Get(fmt.Sprintf("ResourceArns.member.%d", i))
+			if arn == "" {
+				break
+			}
+			arns = append(arns, arn)
+			members += `<member><ResourceArn>` + arn + `</ResourceArn><Tags><member><Key>team</Key><Value>platform</Value></member></Tags></member>`
+		}
+		if len(arns) == 0 || len(arns) > 20 {
+			return nil, fmt.Errorf("invalid DescribeTags batch %d", len(arns))
+		}
+		r.TagBatches = append(r.TagBatches, arns)
+		body = `<DescribeTagsResponse xmlns="http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/"><DescribeTagsResult><TagDescriptions>` + members + `</TagDescriptions></DescribeTagsResult></DescribeTagsResponse>`
+	}
 	body = strings.ReplaceAll(body, "$LB", lb)
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{contentType}}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 }
@@ -214,3 +238,6 @@ func Adapter(t *testing.T, provider string) (providers.Provider, *Replay) {
 	}
 	return adapter, r
 }
+
+// SetPages replaces recorded pages before starting a replay.
+func (r *Replay) SetPages(action string, pages ...json.RawMessage) { r.data[action] = pages }

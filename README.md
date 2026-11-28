@@ -27,6 +27,35 @@ Open http://localhost:8080. Sign in as `admin` with `ADMIN_PASSWORD` from `.env`
 
 The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a compute service shows its latest database snapshot immediately. Navigation and scope changes never queue a refresh; workers maintain freshness in the background.
 
+All inventory lists, summary and reports read the `resources` catalog, scoped to
+workspace and account view access. Compute instance IDs in API URLs identify
+catalog rows; re-open old bookmarked instance links from the list after an
+upgrade. Native provider fields are retained in resource details. Normal instance
+details show the last collected data. The explicit `live=true` detail request
+retains its existing provider lookup after resolving an authorized catalog row;
+use **Refresh live** to queue inventory collection. Actions keep their existing
+provider behavior and show observed state after their follow-up sync.
+The `instances` and `service_snapshots` tables remain for upgrade inspection,
+but Nexus no longer reads inventory from them or writes them. Upgrade from the
+Phase 4 dual-write release so existing data is already in `resources`; otherwise
+lists populate on the next scheduled or manual sync.
+
+To reproduce the list latency check with 100,000 resources (20,000 each of
+instances, desktops, directory users, buckets and security groups), run the
+integration subtest against isolated PostgreSQL and Valkey:
+
+```sh
+TEST_DATABASE_URL='postgres://ccmp:testing-only@localhost:5432/ccmp_test?sslmode=disable' \
+TEST_REDIS_URL='redis://localhost:6379/15' \
+go test -v ./internal/app -run 'TestIntegration/CompatibilityLists100000'
+```
+
+The subtest uses [the reusable SQL seed script](scripts/seed-resource-lists.sql),
+checks counts, and logs three authenticated HTTP requests per inventory list,
+summary and reports endpoint, including JSON serialization and reading the full
+response body over loopback HTTP. The script also
+contains standalone `psql` instructions; use it only on a disposable test database.
+
 `DEPLOYMENT_MODE` is explicit and accepts `self_hosted` or `cloud`; local,
 Compose, and the bundled Helm values default to `self_hosted`. Authenticated
 clients can read the sanitized edition, feature decisions, and current

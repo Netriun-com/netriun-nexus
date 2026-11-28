@@ -97,17 +97,30 @@ func listNetwork(ctx context.Context, c NetworkClients, region string) ([]provid
 		if err := net.CheckToken(seen, sdkaws.ToString(page.NextMarker)); err != nil {
 			return nil, nil, err
 		}
-		for _, lb := range page.LoadBalancers {
-			id, vpc := sdkaws.ToString(lb.LoadBalancerArn), sdkaws.ToString(lb.VpcId)
-			tagPage, err := c.ELB.DescribeTags(ctx, &elasticloadbalancingv2.DescribeTagsInput{ResourceArns: []string{id}})
+		tagsByARN := map[string]map[string]string{}
+		for start := 0; start < len(page.LoadBalancers); start += 20 {
+			end := min(start+20, len(page.LoadBalancers))
+			arns := make([]string, 0, end-start)
+			for _, lb := range page.LoadBalancers[start:end] {
+				arns = append(arns, sdkaws.ToString(lb.LoadBalancerArn))
+			}
+			tagPage, err := c.ELB.DescribeTags(ctx, &elasticloadbalancingv2.DescribeTagsInput{ResourceArns: arns})
 			if err != nil {
 				return nil, nil, err
 			}
-			tags := map[string]string{}
 			for _, description := range tagPage.TagDescriptions {
+				tags := map[string]string{}
 				for _, tag := range description.Tags {
 					tags[sdkaws.ToString(tag.Key)] = sdkaws.ToString(tag.Value)
 				}
+				tagsByARN[sdkaws.ToString(description.ResourceArn)] = tags
+			}
+		}
+		for _, lb := range page.LoadBalancers {
+			id, vpc := sdkaws.ToString(lb.LoadBalancerArn), sdkaws.ToString(lb.VpcId)
+			tags := tagsByARN[id]
+			if tags == nil {
+				tags = map[string]string{}
 			}
 			state := "unknown"
 			if lb.State != nil {

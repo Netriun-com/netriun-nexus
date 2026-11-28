@@ -56,14 +56,6 @@ func (s *Store) ReconcileInventory(ctx context.Context, accountID int64, items [
 	scope := resources.Scope{WorkspaceID: a.Payload.WorkspaceID, AccountID: accountID, Provider: provider, Service: Compute, Kind: providers.Instance, Region: region}
 	catalog := map[string][]resources.Item{}
 	edges := map[string][]resources.Relation{}
-	ids := make([]string, 0, len(items))
-	itemRegions := make([]string, 0, len(items))
-	names := make([]string, 0, len(items))
-	states := make([]string, 0, len(items))
-	types := make([]string, 0, len(items))
-	publicIPs := make([]string, 0, len(items))
-	privateIPs := make([]string, 0, len(items))
-	details := make([]string, 0, len(items))
 	for _, i := range items {
 		if i.WorkspaceID != scope.WorkspaceID || i.AccountID != accountID || i.Provider != provider || i.Service != Compute || i.Kind != providers.Instance {
 			return errors.New("provider returned an instance outside the sync scope")
@@ -74,7 +66,6 @@ func (s *Store) ReconcileInventory(ctx context.Context, accountID int64, items [
 		if i.Region == "" || i.Region == AccountWide {
 			return errors.New("provider returned an instance without a region")
 		}
-		ids = append(ids, i.ProviderID)
 		b, err := json.Marshal(i.Details)
 		if err != nil {
 			return err
@@ -88,52 +79,13 @@ func (s *Store) ReconcileInventory(ctx context.Context, accountID int64, items [
 			return err
 		}
 		catalog[i.Region] = append(catalog[i.Region], resources.Item{ProviderID: i.ProviderID, Name: i.Name, State: i.State, Tags: tags, Summary: summary, Details: b})
-		itemRegions = append(itemRegions, i.Region)
-		names = append(names, i.Name)
-		states = append(states, i.State)
-		// The adapters preserve the legacy machine type and IPs in summary.
-		values := make([]string, 3)
-		for index, key := range []string{"instance_type", "public_ip", "private_ip"} {
-			if value, exists := i.Summary[key]; exists {
-				var ok bool
-				values[index], ok = value.(string)
-				if !ok {
-					return errors.New("provider returned an invalid instance summary")
-				}
-			}
-		}
-		types = append(types, values[0])
-		publicIPs = append(publicIPs, values[1])
-		privateIPs = append(privateIPs, values[2])
-		details = append(details, string(b))
+
 	}
 	for _, edge := range relations {
 		if !wholeAccount && edge.From.Region != region {
 			return resources.ErrInvalid
 		}
 		edges[edge.From.Region] = append(edges[edge.From.Region], resources.Relation{From: resources.Reference(edge.From), To: resources.Reference(edge.To), Relation: edge.Relation})
-	}
-	if len(items) > 0 {
-		_, err = tx.Exec(ctx, `
-INSERT INTO instances(account_id,instance_id,region,name,state,instance_type,public_ip,private_ip,details)
-SELECT $1,item.id,item.region,item.name,item.state,item.instance_type,item.public_ip,item.private_ip,item.details::jsonb
-FROM unnest($2::text[],$3::text[],$4::text[],$5::text[],$6::text[],$7::text[],$8::text[],$9::text[])
- AS item(id,region,name,state,instance_type,public_ip,private_ip,details)
-ON CONFLICT(account_id,region,instance_id) DO UPDATE SET
- name=excluded.name,state=excluded.state,instance_type=excluded.instance_type,
- public_ip=excluded.public_ip,private_ip=excluded.private_ip,details=excluded.details,seen_at=now()`,
-			accountID, ids, itemRegions, names, states, types, publicIPs, privateIPs, details)
-		if err != nil {
-			return err
-		}
-	}
-	if wholeAccount {
-		_, err = tx.Exec(ctx, "DELETE FROM instances WHERE account_id=$1 AND NOT(instance_id=ANY($2::text[]))", accountID, ids)
-	} else {
-		_, err = tx.Exec(ctx, "DELETE FROM instances WHERE account_id=$1 AND region=$2 AND NOT(instance_id=ANY($3::text[]))", accountID, region, ids)
-	}
-	if err != nil {
-		return err
 	}
 	if wholeAccount {
 		err = resources.ReconcileAllRegions(ctx, tx, scope, catalog, edges)

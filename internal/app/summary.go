@@ -2,7 +2,11 @@
 
 package app
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/netriun/nexus/internal/resources"
+)
 
 func (a *App) summary(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
@@ -15,11 +19,10 @@ func (a *App) summary(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var instances, running, accounts, regions int
-	err = a.DB.QueryRow(r.Context(), `SELECT count(i.id),count(i.id) FILTER(WHERE i.state='running'),count(DISTINCT a.id),count(DISTINCT i.region) FROM cloud_accounts a LEFT JOIN instances i ON i.account_id=a.id WHERE a.workspace_id=$1 AND a.id=ANY($2)`, u.WorkspaceID, ids).Scan(&instances, &running, &accounts, &regions)
+	result, err := resources.New(a.DB).Summary(r.Context(), u.WorkspaceID, ids)
 	if err != nil {
 		dbError(w, err)
 		return
 	}
-	write(w, 200, map[string]int{"instances": instances, "running": running, "accounts": accounts, "regions": regions})
+	write(w, 200, result)
 }

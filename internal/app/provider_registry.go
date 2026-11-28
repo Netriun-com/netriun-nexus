@@ -25,26 +25,33 @@ func (a *App) newProviderRegistry() (*providers.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	alibabaAdapter, err := alibaba.NewWithServices(func(ctx context.Context, account providers.Account, region string) (*ecs.Client, error) {
+	alibabaAdapter, err := alibaba.NewWithCollectionClients(func(ctx context.Context, account providers.Account, region string) (*ecs.Client, error) {
 		return a.alibabaClient(ctx, account.WorkspaceID, account.ID, region)
-	}, func(ctx context.Context, account providers.Account, region string) (*cloud.EDSClients, error) {
-		credentials, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
+	}, func(ctx context.Context, account providers.Account, service, region string) (alibaba.ServiceClients, error) {
+		c, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
 		if err != nil {
-			return nil, err
+			return alibaba.ServiceClients{}, err
 		}
-		return cloud.EDSClient(region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-	}, func(ctx context.Context, account providers.Account, region string) (*oss.Client, error) {
-		credentials, err := a.credentials(ctx, account.WorkspaceID, account.ID, "alibaba")
-		if err != nil {
-			return nil, err
-		}
-		if region == "*" {
-			// Preserve the existing account-selected endpoint for ListBuckets.
-			if err := a.DB.QueryRow(ctx, `SELECT COALESCE(NULLIF(regions[1],''),'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, account.ID, account.WorkspaceID).Scan(&region); err != nil {
-				return nil, err
+		seedRegion := region
+		if service == providers.OSSBuckets {
+			if err := a.DB.QueryRow(ctx, `SELECT COALESCE(NULLIF(regions[1],''),'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, account.ID, account.WorkspaceID).Scan(&seedRegion); err != nil {
+				return alibaba.ServiceClients{}, err
 			}
 		}
-		return cloud.OSSClient(region, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken), nil
+		return alibaba.ServiceClients{
+			ECS: func(_ context.Context, _ providers.Account, region string) (*ecs.Client, error) {
+				return cloud.AlibabaClient(region, c.AccessKey, c.SecretKey, c.SessionToken)
+			},
+			EDS: func(_ context.Context, _ providers.Account, region string) (*cloud.EDSClients, error) {
+				return cloud.EDSClient(region, c.AccessKey, c.SecretKey, c.SessionToken)
+			},
+			OSS: func(_ context.Context, _ providers.Account, region string) (*oss.Client, error) {
+				if region == "*" {
+					region = seedRegion
+				}
+				return cloud.OSSClient(region, c.AccessKey, c.SecretKey, c.SessionToken), nil
+			},
+		}, nil
 	})
 	if err != nil {
 		return nil, err
