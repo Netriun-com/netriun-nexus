@@ -274,213 +274,175 @@ this file. Phase 3 left these facts that phase 4 builds on:
 
 ---
 
-## Phase 4 — One resource model
+## Phase 4 — One resource model (done)
 
-Goal (from [docs/roadmap.md](docs/roadmap.md)): one `resources` catalog and one
-`resource_relations` table replace the split between the `instances` table and
-the `service_snapshots` JSON blobs; every list reads from `resources` in under
-one second; Alibaba and AWS also sync networks, subnets, and load balancers with
-their relations. Design: [docs/architecture-v2.md](docs/architecture-v2.md)
-("Data model", "Provider adapters", "API, CLI, and authentication").
+All phase 4 tasks are merged: T17 (PR #25), T18 (PR #26), T21 (PR #27),
+T19 (PR #29), T20 (PR #32), T22 (PR #31), T23 (PR #33), plus the lease-lost
+test fix (PR #30). Released as v0.1.37. The full task text is in the git
+history of this file. Phase 4 left these facts that phase 5 builds on:
+
+- Every list reads `resources`; `instances` and `service_snapshots` are no
+  longer written or read (deprecated by migration 018, dropped later).
+- `resources.Reconcile` bumps `version` only when `name`, `state`, `tags`,
+  `summary`, or `details` change, inside the caller's lease-fenced transaction.
+  Unseen rows of the scope are deleted in the same transaction.
+- `resource_relations.owner_service` records which service's collection owns an
+  edge; the network sync owns instance → subnet, security group, and load
+  balancer edges.
+- Instance ids in the API and in page URLs are `resources.id`.
+- Start/stop no longer writes a transitional state; the post-action refresh
+  shows the observed state.
+- The next free migration number is `019`; check the latest `main` before
+  choosing one.
+
+---
+
+## Phase 5 — Live updates
+
+Goal (from [docs/roadmap.md](docs/roadmap.md)): a resource change appears in an
+open browser without a page refresh or flicker, and the UI no longer polls job
+status. Design: [docs/architecture-v2.md](docs/architecture-v2.md) ("Live
+updates to the UI").
 
 Order and owners (Saheb may reassign; one task has one owner):
 
 | Task | Depends on | Suggested owner |
 | --- | --- | --- |
-| T17 `resources` tables and store | — | Codex |
-| T18 Provider interface and compute adapters | — | Collaborator |
-| T21 `GET /api/v1/resources` | T17 | Codex |
-| T19 Compute sync writes `resources` | T17, T18 | Codex |
-| T20 EDS, OSS, and security groups write `resources` | T19 | Codex |
-| T22 Networks, subnets, and load balancers for Alibaba and AWS | T18, T19 | Collaborator |
-| T23 Every list reads `resources`; old writes stop | T20, T21, T22 | Collaborator |
+| T24 Durable change events written with every catalog change | — | Codex |
+| T27 Phase 4 follow-ups | — | Collaborator |
+| T25 `GET /api/v1/events` SSE stream | T24 | Collaborator |
+| T26 UI patches rows from events and stops polling | T25 | Codex |
 
-T17 and T18 can run in parallel. T21 can run in parallel with T19.
+T24 and T27 can run in parallel.
 
 Rules for this phase, in addition to "Rules for every task":
 
-- All phase 3 rules still apply (new numbered migrations only, SQL in store
-  packages, compatible response shapes, PostgreSQL tests for every behavior
-  change).
-- Two tasks may be open at once. Before adding a migration, merge the latest
-  `main` and take the next free number.
-- During T19 to T22 the old tables keep being written (dual write) so the
-  current UI keeps working. Only T23 stops the old writes. Old tables are not
-  dropped in this phase.
-- Every `resources` query filters by `workspace_id` and by the caller's
-  accessible accounts (`Policy.AccessibleAccountIDs`). Never look up a
-  resource by id alone.
-- Every write to `resources` is fenced by the job lease, like
-  `ReconcileInventory` and `SaveServiceSnapshot` today.
-- Do not guess provider APIs: link the official documentation for every new
-  provider call in the PR description, and cover it with recorded-response
-  tests (no real cloud credentials in CI).
+- All phase 3 and phase 4 rules still apply (numbered migrations, SQL in store
+  packages, compatible response shapes, workspace and account filtering on
+  every query, lease-fenced writes, PostgreSQL tests for every behavior change).
+- An event is written in the same transaction as the change it describes, so a
+  rolled-back or lease-lost collection never emits an event.
+- `NOTIFY` payloads carry only ids (PostgreSQL limits a payload to 8000 bytes).
+  Clients read event content from the database, filtered by access.
+- A browser never receives an event for an account it cannot view, including
+  after its access is removed while the stream is open.
+- The `serve` and `all` roles serve the stream; the `worker` role never does.
 
-### T17. Add the `resources` and `resource_relations` tables and store
+### T24. Write durable change events with every catalog change
 
-- [x] Done — schema, transactional reconciliation, scoped reads, and cursor pagination; runtime wiring remains in later tasks.
+- [ ] Not started
 
 Work:
 
-1. Migration: `resources` with the columns from the architecture
-   (`workspace_id`, `account_id`, `provider`, `service`, `kind`, `region`,
-   `provider_id`, `name`, `state`, `tags` JSONB, `summary` JSONB, `details`
-   JSONB, `seen_at`, `version`, `created_at`, `updated_at`), unique on
-   `(account_id, service, region, kind, provider_id)`, foreign keys with
-   `ON DELETE CASCADE` to `cloud_accounts`.
-2. Migration: `resource_relations(from_id, to_id, relation)` with a unique key,
-   cascade deletes, and indexes on `from_id` and `to_id`.
-3. Indexes: `(workspace_id, account_id, service, region)` for lists,
-   `(workspace_id, kind, name, id)` for sorted pages, and `pg_trgm` GIN indexes
-   on `name` and `provider_id` for search. Use `CREATE EXTENSION IF NOT EXISTS
-   pg_trgm`; document in the README that the database role needs permission
-   to create it (it is a trusted extension since PostgreSQL 13).
-4. A store package `internal/resources` with:
-   - `Reconcile(ctx, tx, scope, items, relations)`: upsert what the provider
-     returned and delete only unseen rows of the same account, service, and
-     region (and kind), in one transaction, only after a fully successful
-     collection. It takes the caller's transaction so the sync handler can
-     fence it with the job lease.
-   - `version` increases only when `name`, `state`, `tags`, `summary`, or
-     `details` actually change (phase 5 will emit events from it).
-   - `List(ctx, workspace, accounts, filter, cursor, limit)` returning
-     `summary` only, and `Get(ctx, workspace, accounts, id)` returning
-     `details` and relations.
-5. No writer or HTTP route uses the store yet.
+1. Migration: `resource_events(id bigserial, workspace_id, account_id, type,
+   service, region, resource_id, version, created_at)` with an index for
+   replay by `(workspace_id, id)` and `ON DELETE CASCADE` to `cloud_accounts`.
+   `resource_id` is not a foreign key, because deleted resources keep their
+   delete event.
+2. `resources.Reconcile` (and `ReconcileAllRegions`) insert one event per
+   created, changed (`version` increased), or deleted row: types
+   `resource.created`, `resource.updated`, `resource.deleted`. Unchanged rows
+   whose only change is `seen_at` emit nothing. Relation changes emit
+   `resource.updated` for the source row.
+3. The sync handler writes `sync.started` and `sync.finished` (with
+   `service`, `region`, success or error code) for each `scheduled.sync` job,
+   in the transactions it already uses.
+4. After inserting events, the same transaction runs one
+   `pg_notify('nexus_events', workspace_id || ':' || max_event_id)`, so a
+   listener learns that new events exist without the payload size limit.
+5. A daily cleanup deletes events older than a configurable retention
+   (default 24 hours), run by the existing daily `audit.retention` job or a
+   sibling daily job; document the
+   setting in the README and Helm values.
 
-Acceptance: PostgreSQL tests for reconcile (upsert, unseen delete per scope,
-unchanged rows keep their `version`, a failed scope leaves rows untouched),
-workspace and account isolation in `List` and `Get`, cursor pagination with no
-duplicates or gaps while rows are inserted, and `EXPLAIN` showing the
-`pg_trgm` index used for a `q` search.
+Acceptance: PostgreSQL tests that a sync with one new, one changed, one
+unchanged, and one removed resource writes exactly three resource events; a
+stale lease and a failed collection write none; a `LISTEN` connection in the
+test receives the notification only after commit; cleanup removes only old
+events; ten thousand unchanged resources emit no events.
 
-### T18. Add the provider interface and compute adapters
+### T25. Add the `GET /api/v1/events` stream
+
+- [ ] Not started
 
 Work:
 
-1. `internal/providers` defines the interface from the architecture without
-   `Apply` (that comes in phase 7):
-   `Services() []ServiceSpec`, `List(ctx, account, service, region)
-   ([]Resource, []Relation, error)`, `Get(ctx, account, kind, id)`.
-   `Resource` and `Relation` match the T17 columns but do not import the store.
-2. One package per provider (`internal/providers/aws`, `alibaba`, `azure`,
-   `gcp`) wrapping today's `internal/cloud` clients. In this task each adapter
-   implements the `compute` service only (kind `instance`), mapping provider
-   objects to the shared fields and keeping the provider's own type name in
-   `summary` (for example `ECS instance`, `EC2 instance`).
-3. A registry that returns the adapter for a provider name, so callers never
-   `switch` on provider names.
-4. Recorded-response tests for each adapter (HTTP fixtures or SDK test
-   doubles), including pagination and an error page. CI uses no real
-   credentials.
-5. No sync code changes yet.
+1. Each API replica opens one dedicated PostgreSQL connection that `LISTEN`s
+   on `nexus_events` (not one per browser) and reconnects with backoff. A hub
+   wakes the connected streams of that workspace.
+2. Each stream reads new rows from `resource_events` after its last delivered
+   id, filtered by `workspace_id` and by `Policy.AccessibleAccountIDs` for
+   `account.view`. Re-check access at least every 30 seconds and on every
+   reconnect, so removed access stops events.
+3. Server-Sent Events format with `id:` equal to the event id. A reconnect with
+   `Last-Event-ID` replays the missed events; if that id is older than the
+   retention window, or more than 1000 events are missing, send one
+   `reset` event and continue from the newest id.
+4. A heartbeat comment every 25 seconds. The route has no write deadline (use
+   `http.ResponseController` to clear it for this route only; every other
+   route keeps the 60 second `WriteTimeout`). Limit open streams per user
+   (default 5) and return `429` above it.
+5. Session cookie authentication like the other API routes; the route is in
+   `docs/openapi.json`.
+6. Document the infrastructure notes: Cloudflare Tunnel and Access keep the
+   stream open because of the heartbeat; any ingress needs proxy buffering
+   off and a read timeout above 60 seconds. Add the matching Helm notes.
 
-Acceptance: each adapter's `List` returns the same instances as today's
-`internal/cloud` inventory function for the same recorded responses; `go test`
-passes without network access.
+Acceptance: tests for workspace and account isolation, access removed while a
+stream is open, replay with `Last-Event-ID`, `reset` for a too-old id,
+heartbeat, the per-user limit, a listener reconnect after the PostgreSQL
+connection is killed, and that `worker` does not serve the route. A test with
+two `serve` processes shows an event committed once reaching streams on both.
 
-### T19. Compute sync writes `resources`
+### T26. UI patches rows from events and stops polling
 
-- [x] Implemented — registry-backed compute collection dual-writes instances and resources in one lease-fenced transaction; PostgreSQL tests cover recorded responses, rollback, and account-wide region cleanup.
-
-Work:
-
-1. The `compute` sync handler collects through the T18 adapter and, in the same
-   lease-fenced transaction as today's `instances` reconcile, calls the T17
-   store to reconcile `resources` (kind `instance`).
-2. Keep writing the `instances` table (dual write); no read path changes.
-3. Failed regions keep their previous `resources` rows, exactly like
-   `instances`.
-4. Remove the `switch provider` blocks in the compute collector that the
-   adapter registry replaces.
-
-Acceptance: after a sync, `instances` and `resources` contain the same
-instances for every account and region (PostgreSQL test with recorded
-responses); a stale lease writes neither; existing compute integration tests
-still pass.
-
-### T20. EDS, OSS, and security groups write `resources`
-
-- [x] Implemented — Alibaba service adapters dual-write snapshots and resources in the same lease-fenced transaction, with recorded-response parity and PostgreSQL rollback tests.
-
-Work: same pattern as T19 for EDS desktops (kind `desktop`), EDS users (kind
-`directory_user`), OSS buckets (kind `bucket`, region from the bucket's own
-location), and security groups (kind `security_group`, with rules in
-`details`). Add these services to the Alibaba adapter. Keep writing
-`service_snapshots` (dual write).
-
-Acceptance: as in T19, for each service; the existing EDS, OSS, and security
-group integration tests still pass.
-
-### T21. Add `GET /api/v1/resources` and `GET /api/v1/resources/{id}`
-
-- [x] Done — scoped list/detail routes, cursor pagination, API documentation, and PostgreSQL access/performance tests; runtime writers remain in later tasks.
+- [ ] Not started
 
 Work:
 
-1. `GET /api/v1/resources` with filters `kind`, `account_ids`, `region`,
-   `state`, `service`, and `q` (search on name and provider id using the
-   `pg_trgm` index), sorted by name, with an opaque cursor and `limit`
-   (default 50, maximum 200). Returns `summary`, never `details`.
-2. `GET /api/v1/resources/{id}` returns `details` and the resource's relations
-   (both directions, with the related resource's `kind` and `name`).
-3. Both routes filter by workspace and the caller's accessible accounts; an
-   inaccessible or other-workspace id returns 404.
-4. Document both routes in `docs/openapi.json`.
+1. The UI opens one `EventSource` per session after login and closes it on
+   logout. It keeps a local store keyed by resource id.
+2. On `resource.*` for a row on the current page, it fetches that one resource
+   (`GET /api/v1/resources/{id}`) and patches the row in place; on
+   `resource.deleted` it removes the row. Events for other pages are ignored.
+   List responses may add `resource_id` and `version` fields (additive only)
+   so service rows can be matched.
+3. `sync.started` and `sync.finished` drive the sync status indicators. Remove
+   the job and sync-state polling loops; keep one fallback reload of the
+   current list after a `reset` event or after the stream has been down for
+   more than 60 seconds.
+4. Fast page switches must not cancel, duplicate, or flicker updates.
 
-Acceptance: PostgreSQL tests for every filter, cursor paging, 404 isolation,
-and that `details` never appears in the list; with 100,000 seeded resources a
-filtered page responds in under one second locally (report the measurement in
-the PR).
+Acceptance: navigation tests pass; a browser test changes a resource in the
+database through a sync and sees the row update without a page reload or a
+full re-render; no `setTimeout` or `setInterval` remains that polls job or sync
+status; recorded timings show no extra list requests while idle.
 
-### T22. Sync networks, subnets, and load balancers for Alibaba and AWS
+### T27. Phase 4 follow-ups
 
-- [x] Implemented — regional read-only adapters, 15-minute configurable scheduling, lease-fenced catalog writes, and provider-reference relations; recorded-response and PostgreSQL tests cover pagination, failures, and relation ownership.
-
-Work:
-
-1. New `network` service in `sync_state` for Alibaba and AWS accounts, per
-   region, default interval 15 minutes (architecture "Sync engine"),
-   configurable like the other intervals.
-2. Adapters list networks (AWS VPC, Alibaba VPC), subnets (AWS subnet,
-   Alibaba VSwitch), and load balancers (AWS ELBv2; Alibaba CLB/SLB and ALB),
-   with kinds `network`, `subnet`, `load_balancer`.
-3. Relations: `subnet in_network network`, `instance in_subnet subnet`,
-   `instance uses_rule security_group`, `load_balancer in_network network`,
-   `instance behind_lb load_balancer`. Relations to resources from other
-   services are written when both ends exist; a missing end is skipped, not an
-   error.
-4. Read-only: no create, change, or delete calls (phase 7).
-5. Link the official API reference for every call in the PR description.
-
-Acceptance: recorded-response tests per provider and kind; PostgreSQL test
-that a full sync produces the expected relations; a failed region keeps its
-previous network rows; the existing services are unaffected.
-
-### T23. Every list reads `resources`; old writes stop
-
-- [x] Implemented by Collaborator — resource-backed reads, retired writes, and latency checks.
+- [ ] Not started
 
 Work:
 
-1. The existing endpoints (`/instances`, EDS, OSS, security groups, summary,
-   reports) read from `resources` and keep their response shapes, so the
-   current UI works unchanged. Instance actions and details look up the
-   resource through `resources`.
-2. Search uses the `pg_trgm` index; remove the `ILIKE` scans on `instances`.
-3. Sync stops writing `instances` and `service_snapshots`. The tables stay
-   (dropped in a later phase after a release); add a comment in a new
-   migration marking them deprecated.
-4. Update the README and in-app docs.
+1. Changing an account's provider deletes that account's `resources` rows of
+   the old provider in the same transaction (today they are hidden by the
+   provider join but never removed).
+2. Alibaba network sync: a region where the SLB or ALB endpoint does not exist
+   at all (DNS or connection failure before the first page) must not fail the
+   whole network region. Use the official endpoint list to decide which
+   products a region offers instead of guessing from the error; link it in the
+   PR. Every other error still fails the region.
+3. Fix the flaky `cmd/nexus` test "lease was not renewed for long handler"
+   (1 second lease, 2.2 second handler) that can fail under a full `-race` run;
+   do not lengthen the test without keeping what it proves.
 
-Acceptance: every existing integration and navigation test passes against
-`resources`; with 100,000 seeded resources every list endpoint responds in
-under one second locally (measurements in the PR); no code path writes
-`instances` or `service_snapshots`.
+Acceptance: PostgreSQL test for the provider change; recorded-response tests
+for a region without ALB and a region without SLB; 20 consecutive full
+`go test -race ./...` runs pass with the flaky test.
 
 ---
 
 ## Next
 
-When phase 4 is done, Claude writes the phase 5 tasks (SSE live updates) here
+When phase 5 is done, Claude writes the phase 6 tasks (frontend rebuild) here
 for review before work starts.
